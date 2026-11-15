@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="#documentação"><img alt="Documentação em português" src="https://img.shields.io/badge/documenta%C3%A7%C3%A3o-portugu%C3%AAs-blue"></a>
-  <a href="#licença"><img alt="Licença prevista: AGPL-3.0" src="https://img.shields.io/badge/licen%C3%A7a-AGPL--3.0-blueviolet"></a>
+  <a href="LICENSE"><img alt="Licença: AGPL-3.0" src="https://img.shields.io/badge/licen%C3%A7a-AGPL--3.0-blueviolet"></a>
   <img alt="Go 1.27" src="https://img.shields.io/badge/Go-1.27-00ADD8?logo=go&logoColor=white">
   <img alt="Status: em construção" src="https://img.shields.io/badge/status-em%20constru%C3%A7%C3%A3o-yellow">
   <a href="governance/CONTRIBUTING.md"><img alt="Contribuições bem-vindas" src="https://img.shields.io/badge/contribui%C3%A7%C3%B5es-bem--vindas-brightgreen"></a>
@@ -83,7 +83,7 @@ implementado, as rotas disponíveis e as limitações atuais.
 - **ActivityPub**, ActivityStreams, WebFinger e NodeInfo para federação.
 - **Armazenamento compatível com S3** para mídia.
 - **Docker Compose** para o ambiente local completo.
-- **AGPL-3.0** como licença prevista para o software.
+- **AGPL-3.0** como licença do software.
 
 ## Desenvolvimento
 
@@ -146,10 +146,9 @@ ser discutidas publicamente antes da implementação.
 
 ## Licença
 
-A licença prevista para o software é a
-**GNU Affero General Public License v3.0 (AGPL-3.0)**. O texto completo será
-incorporado ao arquivo [LICENSE](LICENSE) quando a decisão for consolidada pela
-comunidade.
+O Cultivar é distribuído sob a
+**GNU Affero General Public License v3.0 (AGPL-3.0)**. O texto completo da
+licença está disponível no arquivo [LICENSE](LICENSE).
 
 A licença do software não transfere direitos sobre o nome, a marca ou a
 identidade institucional do projeto. Esses elementos são tratados pela
