@@ -10,10 +10,24 @@
 <body>
   <header class="site-header">
     <a class="brand" href="/">{{.InstanceName}}</a>
-    <span class="badge">ambiente {{.Env}}</span>
+    <nav class="site-nav">
+      {{if .Account}}
+        <a href="/perfil/{{.Account.Person.Handle}}">Meu perfil</a>
+        <a href="/conta">Minha conta</a>
+        <form method="post" action="/sair" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="link-button">Sair</button>
+        </form>
+      {{else}}
+        <a href="/entrar">Entrar</a>
+        <a href="/cadastro">Criar conta</a>
+      {{end}}
+      <span class="badge">ambiente {{.Env}}</span>
+    </nav>
   </header>
 
   <main>
+    {{if .Error}}<p class="alert alert-error" role="alert">{{.Error}}</p>{{end}}
     {{template "content" .}}
   </main>
 

@@ -12,6 +12,7 @@ import (
 
 	"github.com/pressly/goose/v3"
 
+	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
 	"github.com/rede-cultivar/plataform/internal/platform/database"
 	"github.com/rede-cultivar/plataform/internal/platform/logging"
@@ -99,10 +100,11 @@ func runServe() error {
 	cancelSetup()
 
 	handler := web.NewRouter(web.Deps{
-		Config:  cfg,
-		DB:      db,
-		Storage: store,
-		Logger:  logger,
+		Config:   cfg,
+		DB:       db,
+		Storage:  store,
+		Identity: identity.NewService(db, cfg.SessionIdleTimeout, cfg.SessionAbsoluteTimeout),
+		Logger:   logger,
 	})
 
 	server := &http.Server{
