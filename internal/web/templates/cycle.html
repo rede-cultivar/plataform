@@ -58,6 +58,16 @@
 
           {{if .Body}}<p>{{.Body}}</p>{{end}}
 
+          {{with index $.EntryMedia .ID}}
+            <div class="entry-media">
+              {{range .}}
+                <a href="/media/{{.ID}}">
+                  <img src="/media/{{.ID}}" alt="Foto do registro de cultivo" loading="lazy"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
+                </a>
+              {{end}}
+            </div>
+          {{end}}
+
           {{if .Measurements}}
             <dl class="measurements">
               {{range $key, $value := .Measurements}}

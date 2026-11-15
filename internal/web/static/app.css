@@ -350,6 +350,25 @@ button:hover {
   margin-bottom: 0.5rem;
 }
 
+.entry-media {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+
+.entry-media a {
+  display: block;
+}
+
+.entry-media img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
 .tag {
   display: inline-block;
   font-size: 0.75rem;

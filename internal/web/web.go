@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
+	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
 	"github.com/rede-cultivar/plataform/internal/identity"
+	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
 	"github.com/rede-cultivar/plataform/internal/platform/storage"
 	"github.com/rede-cultivar/plataform/internal/practices"
@@ -60,6 +62,16 @@ type PracticeService interface {
 	ArchivePractice(ctx context.Context, authorID, practiceID string) (*practices.Practice, error)
 }
 
+// MediaService reúne as operações de imagens usadas pela interface web.
+type MediaService interface {
+	Upload(ctx context.Context, ownerID, filename string, r io.Reader) (*media.Asset, error)
+	AttachToEntry(ctx context.Context, entryID, mediaID string, position int) error
+	ListByEntryIDs(ctx context.Context, entryIDs []string) (map[string][]media.Asset, error)
+	Open(ctx context.Context, id string) (*media.Asset, io.ReadCloser, error)
+	CanView(ctx context.Context, id, viewerID string) (bool, error)
+	Delete(ctx context.Context, ownerID, id string) error
+}
+
 // Deps reúne as dependências necessárias para montar o roteador HTTP.
 type Deps struct {
 	Config      *config.Config
@@ -68,6 +80,7 @@ type Deps struct {
 	Identity    IdentityService
 	Cultivation CultivationService
 	Practices   PracticeService
+	Media       MediaService
 	Logger      *slog.Logger
 }
 
@@ -78,6 +91,7 @@ type server struct {
 	identity    IdentityService
 	cultivation CultivationService
 	practices   PracticeService
+	media       MediaService
 	logger      *slog.Logger
 	templates   map[string]*template.Template
 	authLimiter *rateLimiter
@@ -106,6 +120,7 @@ type pageData struct {
 	Cycles         []cultivation.Cycle
 	Cycle          *cultivation.Cycle
 	Entries        []cultivation.Entry
+	EntryMedia     map[string][]media.Asset
 	CycleFilter    cultivation.CycleFilter
 	FormCycle      cultivation.Cycle
 	FormEntry      cultivation.Entry
@@ -162,6 +177,7 @@ func NewRouter(deps Deps) http.Handler {
 		identity:    deps.Identity,
 		cultivation: deps.Cultivation,
 		practices:   deps.Practices,
+		media:       deps.Media,
 		logger:      deps.Logger,
 		templates:   templates,
 		authLimiter: newRateLimiter(10, 15*time.Minute),
@@ -204,6 +220,8 @@ func NewRouter(deps Deps) http.Handler {
 	router.Get("/diario/{id}/registros/novo", s.requireAccount(s.entryNewForm))
 	router.Post("/diario/{id}/registros", s.requireAccount(s.entryCreate))
 	router.Get("/diario/{id}", s.cycleShow)
+
+	router.Get("/media/{id}", s.mediaAsset)
 
 	router.Get("/praticas", s.practicesIndex)
 	router.Get("/praticas/minhas", s.requireAccount(s.myPractices))
