@@ -193,6 +193,7 @@ documenta os valores usados no desenvolvimento local.
 | `CULTIVAR_SESSION_IDLE_TIMEOUT` | `12h` | Prazo de inatividade da sessão |
 | `CULTIVAR_SESSION_ABSOLUTE_TIMEOUT` | `720h` | Prazo absoluto da sessão (30 dias) |
 | `CULTIVAR_COOKIE_SECURE` | `false` | Envia cookies apenas por HTTPS; sempre ativo em produção |
+| `CULTIVAR_WORKER_POLL_INTERVAL` | `5s` | Intervalo de polling do trabalhador |
 | `CULTIVAR_S3_ENDPOINT` | `localhost:9000` | Endpoint S3 (host:porta) |
 | `CULTIVAR_S3_REGION` | `us-east-1` | Região S3 |
 | `CULTIVAR_S3_BUCKET` | `cultivar` | Bucket de mídia |

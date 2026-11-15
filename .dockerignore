@@ -1,0 +1,11 @@
+.git
+.github
+bin
+coverage.out
+.env
+.env.*
+!.env.example
+*.md
+docs
+governance
+assets

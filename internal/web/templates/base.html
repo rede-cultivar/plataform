@@ -1,0 +1,25 @@
+{{define "base"}}
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.InstanceName}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">{{.InstanceName}}</a>
+    <span class="badge">ambiente {{.Env}}</span>
+  </header>
+
+  <main>
+    {{template "content" .}}
+  </main>
+
+  <footer>
+    <p>Cultivar · versão {{.Version}} · {{.Year}}</p>
+  </footer>
+</body>
+</html>
+{{end}}

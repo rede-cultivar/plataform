@@ -27,6 +27,8 @@ O nome e a identidade visual definitivos ainda serão discutidos e decididos col
 
 O projeto está em sua fase inicial de organização e concepção.
 
+Para preparar o ambiente local, executar a aplicação e conhecer os comandos disponíveis, consulte [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
 As decisões sobre arquitetura, funcionalidades, governança e desenvolvimento serão documentadas publicamente neste repositório.
 
 ## Licença
