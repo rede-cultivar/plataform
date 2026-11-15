@@ -252,3 +252,161 @@ button:hover {
 .details dd {
   margin: 0;
 }
+
+.page-head {
+  max-width: 46rem;
+}
+
+.page-head h1 {
+  margin-bottom: 0.5rem;
+}
+
+.panel-wide {
+  max-width: 56rem;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-block: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.filters input,
+.filters select,
+.stack select {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--background);
+  color: inherit;
+  font: inherit;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin-block: 1.5rem;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 1rem 1.25rem;
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+}
+
+.card h2 a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.card h2 a:hover {
+  color: var(--accent);
+}
+
+.card p:last-child {
+  margin-bottom: 0;
+}
+
+.timeline {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.entry {
+  border-left: 3px solid var(--accent);
+  padding-left: 1rem;
+}
+
+.entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.55rem;
+}
+
+.measurements {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin-block: 0.5rem;
+}
+
+.measurements dt {
+  font-weight: 600;
+}
+
+.measurements dd {
+  margin: 0;
+}
+
+.steps li,
+.practice-body li {
+  margin-bottom: 0.5rem;
+}
+
+.lead {
+  font-size: 1.1rem;
+}
+
+.button-danger {
+  background: #b3261e;
+  border-color: #b3261e;
+  color: #fff;
+}
+
+.alert-info {
+  border-color: var(--accent);
+  background: rgba(47, 107, 58, 0.08);
+}
+
+.alert-warning {
+  border-color: #a86b00;
+  background: rgba(168, 107, 0, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .alert-info {
+    background: rgba(143, 201, 154, 0.08);
+  }
+
+  .alert-warning {
+    border-color: #f0c36d;
+    background: rgba(240, 195, 109, 0.08);
+    color: #f0c36d;
+  }
+}

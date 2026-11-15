@@ -1,0 +1,82 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="muted">
+    <a href="/praticas">Conhecimento e práticas</a> ·
+    <a href="/perfil/{{.Practice.AuthorHandle}}">@{{.Practice.AuthorHandle}}</a>
+  </p>
+  <h1>{{.Practice.Title}}</h1>
+  <p class="muted">
+    {{if .Practice.Category}}{{.Practice.Category}} · {{end}}
+    {{.Practice.Difficulty.Label}} · versão {{.Practice.Version}}
+    {{if .Practice.PublishedAt}} · publicada em {{.Practice.PublishedAt.Format "02/01/2006"}}{{end}}
+  </p>
+
+  {{if .CanEdit}}
+    <p class="muted">Situação: {{.Practice.Status.Label}} · {{.Practice.Visibility.Label}}</p>
+    <p class="actions">
+      <a class="button" href="/praticas/{{.Practice.ID}}/editar">Editar prática</a>
+      {{if ne (printf "%s" .Practice.Status) "published"}}
+        <form method="post" action="/praticas/{{.Practice.ID}}/publicar" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit">Publicar</button>
+        </form>
+      {{end}}
+      {{if ne (printf "%s" .Practice.Status) "archived"}}
+        <form method="post" action="/praticas/{{.Practice.ID}}/arquivar" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="button-danger">Arquivar</button>
+        </form>
+      {{end}}
+    </p>
+  {{end}}
+</section>
+
+{{if eq (printf "%s" .Practice.Status) "draft"}}
+  <p class="alert alert-info">Este é um rascunho visível apenas para você. Publique a prática para compartilhá-la.</p>
+{{end}}
+{{if eq (printf "%s" .Practice.Status) "archived"}}
+  <p class="alert alert-info">Esta prática está arquivada e não aparece na biblioteca pública.</p>
+{{end}}
+
+<section class="panel panel-wide practice-body">
+  {{if .Practice.Summary}}
+    <p class="lead">{{.Practice.Summary}}</p>
+  {{end}}
+
+  <dl class="details">
+    {{if .Practice.TimeEstimate}}<dt>Tempo estimado</dt><dd>{{.Practice.TimeEstimate}}</dd>{{end}}
+    {{if .Practice.CostEstimate}}<dt>Custo aproximado</dt><dd>{{.Practice.CostEstimate}}</dd>{{end}}
+    {{if .Practice.License}}<dt>Licença</dt><dd>{{.Practice.License}}</dd>{{end}}
+    <dt>Autoria</dt><dd>@{{.Practice.AuthorHandle}}</dd>
+  </dl>
+
+  {{if .Practice.Materials}}
+    <h2>Materiais e ferramentas</h2>
+    <ul>
+      {{range .Practice.Materials}}<li>{{.}}</li>{{end}}
+    </ul>
+  {{end}}
+
+  {{if .Practice.Steps}}
+    <h2>Passo a passo</h2>
+    <ol class="steps">
+      {{range .Practice.Steps}}<li>{{.}}</li>{{end}}
+    </ol>
+  {{end}}
+
+  {{if .Practice.Safety}}
+    <h2>Avisos de segurança e riscos</h2>
+    <p class="alert alert-warning">{{.Practice.Safety}}</p>
+  {{end}}
+
+  {{if .Practice.Adaptations}}
+    <h2>Adaptações e variações</h2>
+    <p>{{.Practice.Adaptations}}</p>
+  {{end}}
+
+  {{if .Practice.References}}
+    <h2>Referências</h2>
+    <p>{{.Practice.References}}</p>
+  {{end}}
+</section>
+{{end}}

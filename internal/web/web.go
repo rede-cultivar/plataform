@@ -15,9 +15,11 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/rede-cultivar/plataform/internal/cultivation"
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
 	"github.com/rede-cultivar/plataform/internal/platform/storage"
+	"github.com/rede-cultivar/plataform/internal/practices"
 	"github.com/rede-cultivar/plataform/internal/version"
 )
 
@@ -37,13 +39,36 @@ type IdentityService interface {
 	Stats(ctx context.Context) (identity.Stats, error)
 }
 
+// CultivationService reúne as operações do diário de cultivo usadas pela interface.
+type CultivationService interface {
+	CreateCycle(ctx context.Context, personID string, input cultivation.CycleInput) (*cultivation.Cycle, error)
+	UpdateCycle(ctx context.Context, personID, cycleID string, input cultivation.CycleUpdateInput) (*cultivation.Cycle, error)
+	FindCycle(ctx context.Context, viewerID, cycleID string) (*cultivation.Cycle, []cultivation.Entry, error)
+	ListPersonCycles(ctx context.Context, personID string) ([]cultivation.Cycle, error)
+	ListPublicCycles(ctx context.Context, filter cultivation.CycleFilter) ([]cultivation.Cycle, error)
+	CreateEntry(ctx context.Context, personID, cycleID string, input cultivation.EntryInput) (*cultivation.Entry, error)
+}
+
+// PracticeService reúne as operações de conhecimento e práticas usadas pela interface.
+type PracticeService interface {
+	CreatePractice(ctx context.Context, authorID string, input practices.Input) (*practices.Practice, error)
+	UpdatePractice(ctx context.Context, authorID, practiceID string, input practices.Input) (*practices.Practice, error)
+	FindPractice(ctx context.Context, viewerID, practiceID string) (*practices.Practice, error)
+	ListPublicPractices(ctx context.Context, filter practices.Filter) ([]practices.Practice, error)
+	ListAuthorPractices(ctx context.Context, authorID string) ([]practices.Practice, error)
+	PublishPractice(ctx context.Context, authorID, practiceID string) (*practices.Practice, error)
+	ArchivePractice(ctx context.Context, authorID, practiceID string) (*practices.Practice, error)
+}
+
 // Deps reúne as dependências necessárias para montar o roteador HTTP.
 type Deps struct {
-	Config   *config.Config
-	DB       *pgxpool.Pool
-	Storage  *storage.Client
-	Identity IdentityService
-	Logger   *slog.Logger
+	Config      *config.Config
+	DB          *pgxpool.Pool
+	Storage     *storage.Client
+	Identity    IdentityService
+	Cultivation CultivationService
+	Practices   PracticeService
+	Logger      *slog.Logger
 }
 
 type server struct {
@@ -51,6 +76,8 @@ type server struct {
 	db          *pgxpool.Pool
 	storage     *storage.Client
 	identity    IdentityService
+	cultivation CultivationService
+	practices   PracticeService
 	logger      *slog.Logger
 	templates   map[string]*template.Template
 	authLimiter *rateLimiter
@@ -75,6 +102,28 @@ type pageData struct {
 	DisplayName string
 	Bio         string
 	Next        string
+
+	Cycles         []cultivation.Cycle
+	Cycle          *cultivation.Cycle
+	Entries        []cultivation.Entry
+	CycleFilter    cultivation.CycleFilter
+	FormCycle      cultivation.Cycle
+	FormEntry      cultivation.Entry
+	FormPractice   practices.Practice
+	PracticeList   []practices.Practice
+	Practice       *practices.Practice
+	PracticeFilter practices.Filter
+	Practices      []practices.Practice
+
+	MeasurementsText  string
+	InterventionsText string
+	OccurrencesText   string
+	MaterialsText     string
+	StepsText         string
+
+	CanEdit    bool
+	IsNew      bool
+	FormAction string
 }
 
 var pageFiles = []string{
@@ -84,6 +133,17 @@ var pageFiles = []string{
 	"profile.html",
 	"profile_edit.html",
 	"account.html",
+	"diary.html",
+	"diary_mine.html",
+	"cycle_new.html",
+	"cycle.html",
+	"cycle_edit.html",
+	"entry_new.html",
+	"practices.html",
+	"practices_mine.html",
+	"practice_new.html",
+	"practice.html",
+	"practice_edit.html",
 }
 
 // NewRouter monta o roteador HTTP da aplicação.
@@ -100,6 +160,8 @@ func NewRouter(deps Deps) http.Handler {
 		db:          deps.DB,
 		storage:     deps.Storage,
 		identity:    deps.Identity,
+		cultivation: deps.Cultivation,
+		practices:   deps.Practices,
 		logger:      deps.Logger,
 		templates:   templates,
 		authLimiter: newRateLimiter(10, 15*time.Minute),
@@ -132,6 +194,26 @@ func NewRouter(deps Deps) http.Handler {
 	router.Get("/conta", s.requireAccount(s.account))
 	router.Get("/conta/perfil", s.requireAccount(s.profileEditForm))
 	router.Post("/conta/perfil", s.requireAccount(s.profileEdit))
+
+	router.Get("/diario", s.diary)
+	router.Get("/diario/meu", s.requireAccount(s.myDiary))
+	router.Get("/diario/novo", s.requireAccount(s.cycleNewForm))
+	router.Post("/diario", s.requireAccount(s.cycleCreate))
+	router.Get("/diario/{id}/editar", s.requireAccount(s.cycleEditForm))
+	router.Post("/diario/{id}/editar", s.requireAccount(s.cycleEdit))
+	router.Get("/diario/{id}/registros/novo", s.requireAccount(s.entryNewForm))
+	router.Post("/diario/{id}/registros", s.requireAccount(s.entryCreate))
+	router.Get("/diario/{id}", s.cycleShow)
+
+	router.Get("/praticas", s.practicesIndex)
+	router.Get("/praticas/minhas", s.requireAccount(s.myPractices))
+	router.Get("/praticas/nova", s.requireAccount(s.practiceNewForm))
+	router.Post("/praticas", s.requireAccount(s.practiceCreate))
+	router.Get("/praticas/{id}/editar", s.requireAccount(s.practiceEditForm))
+	router.Post("/praticas/{id}/editar", s.requireAccount(s.practiceEdit))
+	router.Post("/praticas/{id}/publicar", s.requireAccount(s.practicePublish))
+	router.Post("/praticas/{id}/arquivar", s.requireAccount(s.practiceArchive))
+	router.Get("/praticas/{id}", s.practiceShow)
 
 	router.Get("/.well-known/webfinger", s.webfinger)
 	router.Get("/.well-known/nodeinfo", s.nodeInfoIndex)

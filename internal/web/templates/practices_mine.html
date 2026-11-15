@@ -1,0 +1,29 @@
+{{define "content"}}
+<section class="page-head">
+  <h1>Minhas práticas</h1>
+  <p class="muted">Rascunhos, práticas publicadas e práticas arquivadas.</p>
+  <p class="actions">
+    <a class="button" href="/praticas/nova">Nova prática</a>
+    <a class="button button-secondary" href="/praticas">Ver biblioteca pública</a>
+  </p>
+</section>
+
+{{if .PracticeList}}
+  <ul class="cards">
+    {{range .PracticeList}}
+      <li class="card">
+        <h2><a href="/praticas/{{.ID}}">{{.Title}}</a></h2>
+        <p class="muted">
+          {{.Status.Label}} · {{.Visibility.Label}} · {{.Difficulty.Label}} ·
+          versão {{.Version}}
+        </p>
+        <p class="actions">
+          <a class="button button-secondary" href="/praticas/{{.ID}}/editar">Editar</a>
+        </p>
+      </li>
+    {{end}}
+  </ul>
+{{else}}
+  <p class="muted">Você ainda não criou nenhuma prática.</p>
+{{end}}
+{{end}}
