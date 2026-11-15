@@ -38,3 +38,12 @@ func TestLoadRejectsUnknownEnvironment(t *testing.T) {
 		t.Fatal("Load() error = nil, want error for unknown environment")
 	}
 }
+
+func TestLoadRejectsInvalidSessionWindow(t *testing.T) {
+	t.Setenv("CULTIVAR_SESSION_IDLE_TIMEOUT", "48h")
+	t.Setenv("CULTIVAR_SESSION_ABSOLUTE_TIMEOUT", "24h")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want error when idle timeout exceeds absolute timeout")
+	}
+}
