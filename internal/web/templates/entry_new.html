@@ -3,7 +3,7 @@
   <p class="muted"><a href="/diario/{{.Cycle.ID}}">{{.Cycle.Name}}</a> · novo registro</p>
   <h1>Novo registro de cultivo</h1>
 
-  <form method="post" action="/diario/{{.Cycle.ID}}/registros" class="stack">
+  <form method="post" action="/diario/{{.Cycle.ID}}/registros" enctype="multipart/form-data" class="stack">
     <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
 
     <label>
@@ -15,6 +15,12 @@
       Observações
       <textarea name="body" rows="6" maxlength="5000">{{.FormEntry.Body}}</textarea>
       <span class="hint">Descreva o que foi observado, sem transformar o registro em laudo técnico.</span>
+    </label>
+
+    <label>
+      Fotos
+      <input type="file" name="photos" accept="image/jpeg,image/png,image/gif" multiple>
+      <span class="hint">Até 4 imagens de 10 MB cada. Formatos JPEG, PNG e GIF. Metadados como localização e modelo do aparelho são removidos antes do armazenamento.</span>
     </label>
 
     <label>

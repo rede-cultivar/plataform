@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
+	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/practices"
 )
 
@@ -141,6 +142,20 @@ func (s *server) cycleShow(w http.ResponseWriter, r *http.Request) {
 	data.Cycle = cycle
 	data.Entries = entries
 	data.CanEdit = cycle.IsOwner(viewerID)
+
+	if s.media != nil && len(entries) > 0 {
+		ids := make([]string, len(entries))
+		for i, entry := range entries {
+			ids[i] = entry.ID
+		}
+
+		assets, err := s.media.ListByEntryIDs(r.Context(), ids)
+		if err != nil {
+			s.logger.Warn("list entry media", "error", err)
+		} else {
+			data.EntryMedia = assets
+		}
+	}
 
 	s.render(w, http.StatusOK, "cycle.html", data)
 }
@@ -282,7 +297,7 @@ func (s *server) entryCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
 		return
 	}
-	if !s.parseForm(w, r) {
+	if !s.parseMultipartForm(w, r, maxEntryUploadBytes) {
 		return
 	}
 
@@ -314,8 +329,52 @@ func (s *server) entryCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	files := photoFiles(r)
+	if len(files) > media.MaxPhotosPerEntry {
+		s.renderEntryNew(w, r, http.StatusBadRequest, "Envie no máximo 4 fotos por registro.", cycle, form)
+		return
+	}
+	if len(files) > 0 && s.media == nil {
+		s.renderEntryNew(w, r, http.StatusServiceUnavailable, "O envio de fotos está indisponível.", cycle, form)
+		return
+	}
+
+	uploaded := make([]*media.Asset, 0, len(files))
+	cleanup := func() {
+		for _, asset := range uploaded {
+			if err := s.media.Delete(r.Context(), account.Person.ID, asset.ID); err != nil {
+				s.logger.Warn("cleanup entry photo", "media", asset.ID, "error", err)
+			}
+		}
+	}
+
+	for _, header := range files {
+		file, err := header.Open()
+		if err != nil {
+			cleanup()
+			s.renderEntryNew(w, r, http.StatusBadRequest, "Não foi possível ler a imagem enviada.", cycle, form)
+			return
+		}
+
+		asset, uploadErr := s.media.Upload(r.Context(), account.Person.ID, header.Filename, file)
+		file.Close()
+		if uploadErr != nil {
+			cleanup()
+			if message, ok := mediaMessage(uploadErr); ok {
+				s.renderEntryNew(w, r, http.StatusBadRequest, message, cycle, form)
+				return
+			}
+			s.logger.Error("upload entry photo", "error", uploadErr)
+			s.renderEntryNew(w, r, http.StatusInternalServerError, "Não foi possível salvar a foto. Tente novamente.", cycle, form)
+			return
+		}
+
+		uploaded = append(uploaded, asset)
+	}
+
 	entry, err := s.cultivation.CreateEntry(r.Context(), account.Person.ID, cycleID, input)
 	if err != nil {
+		cleanup()
 		if message, ok := validationMessage(err); ok {
 			s.renderEntryNew(w, r, http.StatusBadRequest, message, cycle, form)
 			return
@@ -323,6 +382,12 @@ func (s *server) entryCreate(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("create entry", "error", err)
 		s.renderEntryNew(w, r, http.StatusInternalServerError, "Não foi possível salvar o registro. Tente novamente.", cycle, form)
 		return
+	}
+
+	for position, asset := range uploaded {
+		if err := s.media.AttachToEntry(r.Context(), entry.ID, asset.ID, position); err != nil {
+			s.logger.Error("attach entry photo", "entry", entry.ID, "media", asset.ID, "error", err)
+		}
 	}
 
 	http.Redirect(w, r, "/diario/"+cycleID+"#registro-"+entry.ID, http.StatusSeeOther)

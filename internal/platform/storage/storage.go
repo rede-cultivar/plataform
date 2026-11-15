@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/minio/minio-go/v7"
@@ -63,6 +64,40 @@ func (c *Client) Ping(ctx context.Context) error {
 	_, err := c.mc.BucketExists(ctx, c.bucket)
 	if err != nil {
 		return fmt.Errorf("ping bucket %q: %w", c.bucket, err)
+	}
+	return nil
+}
+
+// Put grava um objeto no bucket configurado.
+func (c *Client) Put(ctx context.Context, key string, r io.Reader, size int64, contentType string) error {
+	_, err := c.mc.PutObject(ctx, c.bucket, key, r, size, minio.PutObjectOptions{
+		ContentType: contentType,
+	})
+	if err != nil {
+		return fmt.Errorf("put object %q: %w", key, err)
+	}
+	return nil
+}
+
+// Get abre um objeto do bucket configurado.
+func (c *Client) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	object, err := c.mc.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("get object %q: %w", key, err)
+	}
+
+	if _, err := object.Stat(); err != nil {
+		_ = object.Close()
+		return nil, fmt.Errorf("stat object %q: %w", key, err)
+	}
+
+	return object, nil
+}
+
+// Remove apaga um objeto do bucket configurado.
+func (c *Client) Remove(ctx context.Context, key string) error {
+	if err := c.mc.RemoveObject(ctx, c.bucket, key, minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("remove object %q: %w", key, err)
 	}
 	return nil
 }

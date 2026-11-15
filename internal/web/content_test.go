@@ -335,10 +335,10 @@ func (f *fakePractice) ArchivePractice(_ context.Context, authorID, practiceID s
 	return practice, nil
 }
 
-func newContentTestRouter(t *testing.T, identityService IdentityService, cultivationService CultivationService, practiceService PracticeService) http.Handler {
+func newContentTestRouter(t *testing.T, identityService IdentityService, cultivationService CultivationService, practiceService PracticeService, mediaServices ...MediaService) http.Handler {
 	t.Helper()
 
-	return NewRouter(Deps{
+	deps := Deps{
 		Config: &config.Config{
 			Env:                    config.EnvDevelopment,
 			InstanceName:           "Cultivar Test",
@@ -351,7 +351,12 @@ func newContentTestRouter(t *testing.T, identityService IdentityService, cultiva
 		Cultivation: cultivationService,
 		Practices:   practiceService,
 		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
+	}
+	if len(mediaServices) > 0 {
+		deps.Media = mediaServices[0]
+	}
+
+	return NewRouter(deps)
 }
 
 func sampleCycle(id string, visibility cultivation.Visibility) *cultivation.Cycle {

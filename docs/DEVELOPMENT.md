@@ -109,7 +109,8 @@ conhecimento reproduzível, como adubos caseiros e construção de recipientes.
 | `GET /diario/{id}/editar` | Edição do ciclo pela pessoa responsável |
 | `POST /diario/{id}/editar` | Atualiza contexto, situação e resultado |
 | `GET /diario/{id}/registros/novo` | Formulário de novo registro |
-| `POST /diario/{id}/registros` | Cria um registro datado |
+| `POST /diario/{id}/registros` | Cria um registro datado, com até 4 fotos |
+| `GET /media/{id}` | Serve a imagem quando a pessoa tem permissão |
 | `GET /praticas` | Biblioteca pública de práticas |
 | `GET /praticas/minhas` | Práticas da pessoa autenticada, incluindo rascunhos |
 | `GET /praticas/nova` | Formulário de criação de prática |
@@ -130,12 +131,23 @@ As tabelas `cultivation_cycles`, `cultivation_entries`, `practices`,
 `practice_versions`, `media_assets`, `cultivation_entry_media` e `practice_media`
 são criadas pela migração `00003_cultivation.sql`.
 
+As fotos do diário passam por validação e normalização antes de serem gravadas
+no armazenamento de objetos. Cada registro aceita até 4 imagens de 10 MB, nos
+formatos JPEG, PNG e GIF. Imagens JPEG e PNG são recodificadas, o que corrige a
+orientação EXIF e remove metadados pessoais, como localização e modelo do
+aparelho. O banco guarda apenas os metadados e a chave do objeto.
+
+O acesso a `GET /media/{id}` é verificado no servidor: a pessoa responsável vê
+todas as suas imagens, enquanto as demais só acessam imagens vinculadas a
+registros de ciclos públicos ou a práticas publicadas. Imagens de ciclos
+privados continuam protegidas pela mesma regra.
+
 Limitações atuais:
 
-- O upload de mídia ainda não está disponível; o esquema já reserva as tabelas.
 - A visibilidade `followers` é aceita no modelo, mas ainda não é aplicada na
   leitura: apenas a pessoa responsável e o público geral têm acesso garantido.
 - A federação de ciclos e práticas ainda não publica atividades no outbox.
+- Ainda não há remoção ou edição de fotos pela interface.
 
 ## Stack completa em containers
 
@@ -270,5 +282,8 @@ uma coleção vazia.
 - **Armazenamento S3 indisponível:** o servidor inicia mesmo assim, mas uploads
   falharão até que o bucket esteja acessível. Verifique `make deps` e o serviço
   `s3mock` com `docker compose ps`.
+- **Foto não aparece no registro:** confirme que o upload retornou sucesso e que
+  o serviço S3 está acessível. Imagens de ciclos privados só são servidas para a
+  pessoa responsável.
 - **Dados inconsistentes no ambiente local:** use `make reset` para recriar os
   volumes (isso apaga os dados locais).
