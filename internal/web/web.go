@@ -32,7 +32,9 @@ type IdentityService interface {
 	AuthenticateSession(ctx context.Context, token string) (*identity.Account, error)
 	EndSession(ctx context.Context, token string) error
 	FindPersonByHandle(ctx context.Context, handle string) (*identity.Person, error)
+	FindPersonByID(ctx context.Context, id string) (*identity.Person, error)
 	UpdateProfile(ctx context.Context, personID, displayName, bio string) (*identity.Person, error)
+	Stats(ctx context.Context) (identity.Stats, error)
 }
 
 // Deps reúne as dependências necessárias para montar o roteador HTTP.
@@ -130,6 +132,16 @@ func NewRouter(deps Deps) http.Handler {
 	router.Get("/conta", s.requireAccount(s.account))
 	router.Get("/conta/perfil", s.requireAccount(s.profileEditForm))
 	router.Post("/conta/perfil", s.requireAccount(s.profileEdit))
+
+	router.Get("/.well-known/webfinger", s.webfinger)
+	router.Get("/.well-known/nodeinfo", s.nodeInfoIndex)
+	router.Get("/nodeinfo/2.0", s.nodeInfo)
+
+	router.Get("/actors/{id}", s.actor)
+	router.Get("/actors/{id}/outbox", s.actorOutbox)
+	router.Get("/actors/{id}/followers", s.actorFollowers)
+	router.Get("/actors/{id}/following", s.actorFollowing)
+	router.Post("/actors/{id}/inbox", s.inbox)
 
 	router.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
@@ -277,7 +289,11 @@ func (s *server) logRequests(next http.Handler) http.Handler {
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writeJSONType(w, status, "application/json; charset=utf-8", payload)
+}
+
+func writeJSONType(w http.ResponseWriter, status int, contentType string, payload any) {
+	w.Header().Set("Content-Type", contentType)
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
 }

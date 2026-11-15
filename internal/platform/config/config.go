@@ -83,6 +83,21 @@ func (c *Config) SecureCookies() bool {
 	return c.CookieSecure || c.IsProduction()
 }
 
+// BaseURL retorna a URL pública canônica da instância.
+func (c *Config) BaseURL() string {
+	domain := strings.TrimSuffix(strings.TrimSpace(c.LocalDomain), "/")
+	if strings.HasPrefix(domain, "http://") || strings.HasPrefix(domain, "https://") {
+		return domain
+	}
+
+	scheme := "https"
+	if !c.IsProduction() {
+		scheme = "http"
+	}
+
+	return scheme + "://" + domain
+}
+
 func (c *Config) validate() error {
 	switch c.Env {
 	case EnvDevelopment, EnvProduction:

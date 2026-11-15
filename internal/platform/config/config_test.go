@@ -47,3 +47,20 @@ func TestLoadRejectsInvalidSessionWindow(t *testing.T) {
 		t.Fatal("Load() error = nil, want error when idle timeout exceeds absolute timeout")
 	}
 }
+
+func TestBaseURL(t *testing.T) {
+	development := &Config{Env: EnvDevelopment, LocalDomain: "localhost:8080"}
+	if got := development.BaseURL(); got != "http://localhost:8080" {
+		t.Errorf("BaseURL() = %q, want %q", got, "http://localhost:8080")
+	}
+
+	production := &Config{Env: EnvProduction, LocalDomain: "cultivar.example"}
+	if got := production.BaseURL(); got != "https://cultivar.example" {
+		t.Errorf("BaseURL() = %q, want %q", got, "https://cultivar.example")
+	}
+
+	explicit := &Config{Env: EnvDevelopment, LocalDomain: "https://cultivar.example/"}
+	if got := explicit.BaseURL(); got != "https://cultivar.example" {
+		t.Errorf("BaseURL() = %q, want %q", got, "https://cultivar.example")
+	}
+}
