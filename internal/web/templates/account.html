@@ -1,0 +1,27 @@
+{{define "content"}}
+<section class="panel">
+  <h1>Minha conta</h1>
+
+  <dl class="details">
+    <dt>Nome</dt>
+    <dd>{{.Account.Person.DisplayName}}</dd>
+
+    <dt>Identificador</dt>
+    <dd>@{{.Account.Person.Handle}}@{{.LocalDomain}}</dd>
+
+    <dt>E-mail</dt>
+    <dd>{{.Account.Email}}</dd>
+
+    <dt>E-mail verificado</dt>
+    <dd>{{if .Account.EmailVerified}}sim{{else}}não{{end}}</dd>
+
+    <dt>Conta criada em</dt>
+    <dd>{{.Account.CreatedAt.Format "02/01/2006"}}</dd>
+  </dl>
+
+  <p class="actions">
+    <a class="button" href="/conta/perfil">Editar perfil</a>
+    <a class="button button-secondary" href="/perfil/{{.Account.Person.Handle}}">Ver perfil público</a>
+  </p>
+</section>
+{{end}}

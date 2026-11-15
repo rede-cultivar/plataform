@@ -1,0 +1,80 @@
+{{define "content"}}
+<section class="page-head">
+  <h1>Diário de cultivo</h1>
+  <p class="muted">
+    Experiências públicas de cultivo, com observações, intervenções e resultados
+    compartilhados pela comunidade.
+  </p>
+  <p class="actions">
+    <a class="button" href="/diario/novo">Registrar cultivo</a>
+    {{if .Account}}
+      <a class="button button-secondary" href="/diario/meu">Meu diário</a>
+    {{end}}
+  </p>
+</section>
+
+<form method="get" action="/diario" class="filters">
+  <label>
+    Espécie
+    <input type="search" name="species" value="{{.CycleFilter.Species}}" placeholder="ex.: tomate">
+  </label>
+
+  <label>
+    Ambiente
+    <select name="environment">
+      <option value="">Todos</option>
+      <option value="indoor" {{if eq (printf "%s" .CycleFilter.Environment) "indoor"}}selected{{end}}>Interno</option>
+      <option value="outdoor" {{if eq (printf "%s" .CycleFilter.Environment) "outdoor"}}selected{{end}}>Externo</option>
+      <option value="greenhouse" {{if eq (printf "%s" .CycleFilter.Environment) "greenhouse"}}selected{{end}}>Estufa</option>
+      <option value="nursery" {{if eq (printf "%s" .CycleFilter.Environment) "nursery"}}selected{{end}}>Viveiro</option>
+      <option value="other" {{if eq (printf "%s" .CycleFilter.Environment) "other"}}selected{{end}}>Outro</option>
+    </select>
+  </label>
+
+  <label>
+    Estágio
+    <select name="stage">
+      <option value="">Todos</option>
+      <option value="germination" {{if eq (printf "%s" .CycleFilter.Stage) "germination"}}selected{{end}}>Germinação</option>
+      <option value="seedling" {{if eq (printf "%s" .CycleFilter.Stage) "seedling"}}selected{{end}}>Muda</option>
+      <option value="vegetative" {{if eq (printf "%s" .CycleFilter.Stage) "vegetative"}}selected{{end}}>Vegetativo</option>
+      <option value="flowering" {{if eq (printf "%s" .CycleFilter.Stage) "flowering"}}selected{{end}}>Floração</option>
+      <option value="fruiting" {{if eq (printf "%s" .CycleFilter.Stage) "fruiting"}}selected{{end}}>Frutificação</option>
+      <option value="harvest" {{if eq (printf "%s" .CycleFilter.Stage) "harvest"}}selected{{end}}>Colheita</option>
+      <option value="finished" {{if eq (printf "%s" .CycleFilter.Stage) "finished"}}selected{{end}}>Encerrado</option>
+    </select>
+  </label>
+
+  <label>
+    Situação
+    <select name="status">
+      <option value="">Todas</option>
+      <option value="active" {{if eq (printf "%s" .CycleFilter.Status) "active"}}selected{{end}}>Em andamento</option>
+      <option value="finished" {{if eq (printf "%s" .CycleFilter.Status) "finished"}}selected{{end}}>Concluído</option>
+    </select>
+  </label>
+
+  <button type="submit">Filtrar</button>
+</form>
+
+{{if .Cycles}}
+  <ul class="cards">
+    {{range .Cycles}}
+      <li class="card">
+        <h2><a href="/diario/{{.ID}}">{{.Name}}</a></h2>
+        <p class="muted">
+          {{.Species}}{{if .Variety}} · {{.Variety}}{{end}} ·
+          {{.Environment.Label}} · {{.Stage.Label}} · {{.Status.Label}}
+        </p>
+        <p class="muted">
+          Por <a href="/perfil/{{.PersonHandle}}">@{{.PersonHandle}}</a> ·
+          início em {{.StartedOn.Format "02/01/2006"}} ·
+          {{.EntryCount}} registro{{if ne .EntryCount 1}}s{{end}}
+        </p>
+      </li>
+    {{end}}
+  </ul>
+{{else}}
+  <p class="muted">Nenhum ciclo público encontrado com esses filtros.</p>
+{{end}}
+{{end}}

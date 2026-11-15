@@ -1,0 +1,44 @@
+{{define "content"}}
+<section class="panel">
+  <h1>Criar conta</h1>
+  <p class="muted">
+    A conta permite participar da instância. O identificador público será usado
+    para mencionar você e, futuramente, para a identidade federada.
+  </p>
+
+  <form method="post" action="/cadastro" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <label>
+      Nome de exibição
+      <input type="text" name="display_name" value="{{.DisplayName}}" maxlength="80" autocomplete="name" required>
+    </label>
+
+    <label>
+      Identificador público
+      <input type="text" name="handle" value="{{.Handle}}" pattern="[a-z][a-z0-9_]{2,29}" maxlength="30" autocomplete="username" required>
+      <span class="hint">Será exibido como @identificador@{{.LocalDomain}}. Use letras minúsculas, números e sublinhado.</span>
+    </label>
+
+    <label>
+      E-mail
+      <input type="email" name="email" value="{{.Email}}" maxlength="254" autocomplete="email" required>
+    </label>
+
+    <label>
+      Senha
+      <input type="password" name="password" minlength="12" maxlength="128" autocomplete="new-password" required>
+      <span class="hint">Use pelo menos 12 caracteres.</span>
+    </label>
+
+    <label>
+      Confirme a senha
+      <input type="password" name="password_confirm" minlength="12" maxlength="128" autocomplete="new-password" required>
+    </label>
+
+    <button type="submit">Criar conta</button>
+  </form>
+
+  <p class="muted">Já tem uma conta? <a href="/entrar">Entrar</a>.</p>
+</section>
+{{end}}

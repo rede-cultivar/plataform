@@ -1,0 +1,52 @@
+{{define "content"}}
+<section class="page-head">
+  <h1>Conhecimento e práticas</h1>
+  <p class="muted">
+    Práticas de cultivo e faça você mesmo compartilhadas pela comunidade, com
+    materiais, etapas, riscos e adaptações.
+  </p>
+  <p class="actions">
+    <a class="button" href="/praticas/nova">Publicar prática</a>
+    {{if .Account}}
+      <a class="button button-secondary" href="/praticas/minhas">Minhas práticas</a>
+    {{end}}
+  </p>
+</section>
+
+<form method="get" action="/praticas" class="filters">
+  <label>
+    Categoria
+    <input type="search" name="category" value="{{.PracticeFilter.Category}}" placeholder="ex.: adubação">
+  </label>
+
+  <label>
+    Dificuldade
+    <select name="difficulty">
+      <option value="">Todas</option>
+      <option value="beginner" {{if eq (printf "%s" .PracticeFilter.Difficulty) "beginner"}}selected{{end}}>Iniciante</option>
+      <option value="intermediate" {{if eq (printf "%s" .PracticeFilter.Difficulty) "intermediate"}}selected{{end}}>Intermediário</option>
+      <option value="advanced" {{if eq (printf "%s" .PracticeFilter.Difficulty) "advanced"}}selected{{end}}>Avançado</option>
+    </select>
+  </label>
+
+  <button type="submit">Filtrar</button>
+</form>
+
+{{if .PracticeList}}
+  <ul class="cards">
+    {{range .PracticeList}}
+      <li class="card">
+        <h2><a href="/praticas/{{.ID}}">{{.Title}}</a></h2>
+        {{if .Summary}}<p>{{.Summary}}</p>{{end}}
+        <p class="muted">
+          {{if .Category}}{{.Category}} · {{end}}{{.Difficulty.Label}} ·
+          por <a href="/perfil/{{.AuthorHandle}}">@{{.AuthorHandle}}</a> ·
+          versão {{.Version}}
+        </p>
+      </li>
+    {{end}}
+  </ul>
+{{else}}
+  <p class="muted">Nenhuma prática pública encontrada com esses filtros.</p>
+{{end}}
+{{end}}

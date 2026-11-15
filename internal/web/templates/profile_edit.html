@@ -1,0 +1,26 @@
+{{define "content"}}
+<section class="panel">
+  <h1>Editar perfil</h1>
+  <p class="muted">@{{.Account.Person.Handle}}@{{.LocalDomain}}</p>
+
+  <form method="post" action="/conta/perfil" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <label>
+      Nome de exibição
+      <input type="text" name="display_name" value="{{.DisplayName}}" maxlength="80" autocomplete="name" required>
+    </label>
+
+    <label>
+      Biografia
+      <textarea name="bio" rows="6" maxlength="500">{{.Bio}}</textarea>
+      <span class="hint">Até 500 caracteres. A biografia aparece no perfil público e no Actor federado.</span>
+    </label>
+
+    <div class="actions">
+      <button type="submit">Salvar</button>
+      <a class="button button-secondary" href="/conta">Cancelar</a>
+    </div>
+  </form>
+</section>
+{{end}}

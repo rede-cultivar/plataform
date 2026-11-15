@@ -1,0 +1,99 @@
+{{define "content"}}
+<section class="page-head">
+  <p class="muted">
+    <a href="/diario">Diário de cultivo</a> ·
+    <a href="/perfil/{{.Cycle.PersonHandle}}">@{{.Cycle.PersonHandle}}</a>
+  </p>
+  <h1>{{.Cycle.Name}}</h1>
+  <p class="muted">
+    {{.Cycle.Species}}{{if .Cycle.Variety}} · {{.Cycle.Variety}}{{end}}
+    {{if .Cycle.Category}} · {{.Cycle.Category}}{{end}} ·
+    {{.Cycle.Environment.Label}} · {{.Cycle.Stage.Label}} ·
+    {{.Cycle.Status.Label}} · {{.Cycle.Visibility.Label}}
+  </p>
+  <p class="muted">
+    Início em {{.Cycle.StartedOn.Format "02/01/2006"}}
+    {{if .Cycle.FinishedOn}} · encerrado em {{.Cycle.FinishedOn.Format "02/01/2006"}}{{end}}
+    · {{.Cycle.EntryCount}} registro{{if ne .Cycle.EntryCount 1}}s{{end}}
+  </p>
+
+  {{if .CanEdit}}
+    <p class="actions">
+      <a class="button" href="/diario/{{.Cycle.ID}}/registros/novo">Novo registro</a>
+      <a class="button button-secondary" href="/diario/{{.Cycle.ID}}/editar">Editar ciclo</a>
+    </p>
+  {{end}}
+</section>
+
+{{if .Cycle.Outcome}}
+  <section class="panel panel-wide">
+    <h2>Resultado e aprendizados</h2>
+    <p>{{.Cycle.Outcome}}</p>
+  </section>
+{{end}}
+
+<section class="panel panel-wide">
+  <h2>Contexto do cultivo</h2>
+  <dl class="details">
+    {{if .Cycle.Location}}<dt>Localização</dt><dd>{{.Cycle.Location}}</dd>{{end}}
+    {{if .Cycle.Substrate}}<dt>Substrato</dt><dd>{{.Cycle.Substrate}}</dd>{{end}}
+    {{if .Cycle.Container}}<dt>Recipiente</dt><dd>{{.Cycle.Container}}</dd>{{end}}
+    {{if .Cycle.Technique}}<dt>Técnica</dt><dd>{{.Cycle.Technique}}</dd>{{end}}
+    <dt>Responsável</dt><dd>@{{.Cycle.PersonHandle}}</dd>
+  </dl>
+</section>
+
+<section class="panel panel-wide">
+  <h2>Registros</h2>
+
+  {{if .Entries}}
+    <ol class="timeline">
+      {{range .Entries}}
+        <li class="entry" id="registro-{{.ID}}">
+          <div class="entry-meta">
+            <strong>{{.OccurredAt.Format "02/01/2006 15:04"}}</strong>
+            <span class="tag">{{.EffectiveVisibilityLabel $.Cycle}}</span>
+            {{if .Stage}}<span class="tag">{{.Stage.Label}}</span>{{end}}
+          </div>
+
+          {{if .Body}}<p>{{.Body}}</p>{{end}}
+
+          {{if .Measurements}}
+            <dl class="measurements">
+              {{range $key, $value := .Measurements}}
+                <dt>{{$key}}</dt><dd>{{$value}}</dd>
+              {{end}}
+            </dl>
+          {{end}}
+
+          {{if .Interventions}}
+            <p><strong>Intervenções:</strong> {{range $index, $item := .Interventions}}{{if $index}}, {{end}}{{$item}}{{end}}</p>
+          {{end}}
+
+          {{if .Occurrences}}
+            <p><strong>Ocorrências:</strong> {{range $index, $item := .Occurrences}}{{if $index}}, {{end}}{{$item}}{{end}}</p>
+          {{end}}
+
+          {{if .HarvestLabel}}
+            <p><strong>Colheita:</strong> {{.HarvestLabel}}</p>
+          {{end}}
+
+          {{if .PracticeTitle}}
+            <p><strong>Prática utilizada:</strong> <a href="/praticas/{{.PracticeID}}">{{.PracticeTitle}}</a></p>
+          {{end}}
+
+          <p class="muted">Registrado por @{{.AuthorHandle}} em {{.CreatedAt.Format "02/01/2006 15:04"}}.</p>
+        </li>
+      {{end}}
+    </ol>
+  {{else}}
+    <p class="muted">Nenhum registro visível neste ciclo.</p>
+  {{end}}
+
+  {{if .CanEdit}}
+    <p class="actions">
+      <a class="button" href="/diario/{{.Cycle.ID}}/registros/novo">Adicionar registro</a>
+    </p>
+  {{end}}
+</section>
+{{end}}

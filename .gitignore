@@ -1,0 +1,16 @@
+# Binários e artefatos de build
+/bin/
+/coverage.out
+*.test
+
+# Ambiente local
+.env
+.env.local
+
+# Editores e sistemas operacionais
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log

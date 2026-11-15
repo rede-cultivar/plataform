@@ -1,0 +1,23 @@
+{{define "content"}}
+<section class="panel profile">
+  <p class="muted">@{{.Person.Handle}}@{{.LocalDomain}}</p>
+  <h1>{{.Person.DisplayName}}</h1>
+
+  {{if .Person.Bio}}
+    <p>{{.Person.Bio}}</p>
+  {{else}}
+    <p class="muted">Esta pessoa ainda não escreveu uma biografia.</p>
+  {{end}}
+
+  <p class="muted">Participa desde {{.Person.CreatedAt.Format "02/01/2006"}}.</p>
+
+  {{if .Account}}
+    {{if eq .Account.Person.ID .Person.ID}}
+      <p class="actions">
+        <a class="button" href="/conta/perfil">Editar perfil</a>
+        <a class="button button-secondary" href="/conta">Minha conta</a>
+      </p>
+    {{end}}
+  {{end}}
+</section>
+{{end}}

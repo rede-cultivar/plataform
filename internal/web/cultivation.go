@@ -1,0 +1,511 @@
+package web
+
+import (
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/rede-cultivar/plataform/internal/cultivation"
+	"github.com/rede-cultivar/plataform/internal/practices"
+)
+
+// diary exibe a descoberta pública de ciclos de cultivo.
+func (s *server) diary(w http.ResponseWriter, r *http.Request) {
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+
+	filter := cultivation.NormalizeFilter(cultivation.CycleFilter{
+		Species:     r.URL.Query().Get("species"),
+		Environment: cultivation.Environment(r.URL.Query().Get("environment")),
+		Stage:       cultivation.Stage(r.URL.Query().Get("stage")),
+		Status:      cultivation.Status(r.URL.Query().Get("status")),
+	})
+
+	cycles, err := s.cultivation.ListPublicCycles(r.Context(), filter)
+	if err != nil {
+		s.logger.Error("list public cycles", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := s.newPage(w, r)
+	data.Cycles = cycles
+	data.CycleFilter = filter
+
+	s.render(w, http.StatusOK, "diary.html", data)
+}
+
+// myDiary exibe os ciclos da pessoa autenticada.
+func (s *server) myDiary(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+
+	cycles, err := s.cultivation.ListPersonCycles(r.Context(), account.Person.ID)
+	if err != nil {
+		s.logger.Error("list person cycles", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := s.newPage(w, r)
+	data.Cycles = cycles
+
+	s.render(w, http.StatusOK, "diary_mine.html", data)
+}
+
+// cycleNewForm exibe o formulário de criação de um ciclo.
+func (s *server) cycleNewForm(w http.ResponseWriter, r *http.Request) {
+	form := cultivation.Cycle{
+		Environment: cultivation.EnvironmentOutdoor,
+		Stage:       cultivation.StageGermination,
+		Visibility:  cultivation.VisibilityPrivate,
+		StartedOn:   time.Now(),
+	}
+	s.renderCycleNew(w, r, http.StatusOK, "", form)
+}
+
+// cycleCreate valida e cria um ciclo.
+func (s *server) cycleCreate(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+	if !s.parseForm(w, r) {
+		return
+	}
+	if !s.validateCSRF(r) {
+		s.renderCycleNew(w, r, http.StatusForbidden, "Sessão do formulário expirada. Tente novamente.", cultivation.Cycle{})
+		return
+	}
+
+	input, form, err := cycleInputFromForm(r)
+	if err != nil {
+		s.renderCycleNew(w, r, http.StatusBadRequest, "Informe uma data de início válida.", form)
+		return
+	}
+
+	cycle, err := s.cultivation.CreateCycle(r.Context(), account.Person.ID, input)
+	if err != nil {
+		if message, ok := validationMessage(err); ok {
+			s.renderCycleNew(w, r, http.StatusBadRequest, message, form)
+			return
+		}
+		s.logger.Error("create cycle", "error", err)
+		s.renderCycleNew(w, r, http.StatusInternalServerError, "Não foi possível criar o ciclo. Tente novamente.", form)
+		return
+	}
+
+	http.Redirect(w, r, "/diario/"+cycle.ID, http.StatusSeeOther)
+}
+
+// cycleShow exibe um ciclo e seus registros visíveis.
+func (s *server) cycleShow(w http.ResponseWriter, r *http.Request) {
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+
+	viewerID := ""
+	if account := accountFrom(r.Context()); account != nil {
+		viewerID = account.Person.ID
+	}
+
+	cycle, entries, err := s.cultivation.FindCycle(r.Context(), viewerID, chi.URLParam(r, "id"))
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find cycle", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data := s.newPage(w, r)
+	data.Cycle = cycle
+	data.Entries = entries
+	data.CanEdit = cycle.IsOwner(viewerID)
+
+	s.render(w, http.StatusOK, "cycle.html", data)
+}
+
+// cycleEditForm exibe o formulário de edição de um ciclo.
+func (s *server) cycleEditForm(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+
+	cycle, _, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, chi.URLParam(r, "id"))
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find cycle for edit", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !cycle.IsOwner(account.Person.ID) {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+
+	s.renderCycleEdit(w, r, http.StatusOK, "", *cycle)
+}
+
+// cycleEdit valida e atualiza um ciclo.
+func (s *server) cycleEdit(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+	if !s.parseForm(w, r) {
+		return
+	}
+
+	cycleID := chi.URLParam(r, "id")
+	cycle, _, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, cycleID)
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find cycle for update", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !cycle.IsOwner(account.Person.ID) {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+
+	if !s.validateCSRF(r) {
+		s.renderCycleEdit(w, r, http.StatusForbidden, "Sessão do formulário expirada. Tente novamente.", *cycle)
+		return
+	}
+
+	input, form, err := cycleUpdateInputFromForm(r)
+	if err != nil {
+		form.ID = cycle.ID
+		form.PersonHandle = cycle.PersonHandle
+		s.renderCycleEdit(w, r, http.StatusBadRequest, "Informe datas válidas.", form)
+		return
+	}
+
+	form.ID = cycle.ID
+	form.PersonHandle = cycle.PersonHandle
+
+	updated, err := s.cultivation.UpdateCycle(r.Context(), account.Person.ID, cycleID, input)
+	if err != nil {
+		if message, ok := validationMessage(err); ok {
+			s.renderCycleEdit(w, r, http.StatusBadRequest, message, form)
+			return
+		}
+		s.logger.Error("update cycle", "error", err)
+		s.renderCycleEdit(w, r, http.StatusInternalServerError, "Não foi possível atualizar o ciclo. Tente novamente.", form)
+		return
+	}
+
+	http.Redirect(w, r, "/diario/"+updated.ID, http.StatusSeeOther)
+}
+
+// entryNewForm exibe o formulário de criação de um registro.
+func (s *server) entryNewForm(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+
+	cycle, _, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, chi.URLParam(r, "id"))
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find cycle for entry", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !cycle.IsOwner(account.Person.ID) {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+
+	form := cultivation.Entry{
+		OccurredAt: time.Now(),
+		Visibility: cultivation.EntryVisibilityInherit,
+	}
+
+	s.renderEntryNew(w, r, http.StatusOK, "", cycle, form)
+}
+
+// entryCreate valida e cria um registro em um ciclo.
+func (s *server) entryCreate(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+	if !s.parseForm(w, r) {
+		return
+	}
+
+	cycleID := chi.URLParam(r, "id")
+	cycle, _, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, cycleID)
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find cycle for new entry", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !cycle.IsOwner(account.Person.ID) {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+
+	if !s.validateCSRF(r) {
+		form := cultivation.Entry{OccurredAt: time.Now(), Visibility: cultivation.EntryVisibilityInherit}
+		s.renderEntryNew(w, r, http.StatusForbidden, "Sessão do formulário expirada. Tente novamente.", cycle, form)
+		return
+	}
+
+	input, form, err := entryInputFromForm(r)
+	if err != nil {
+		s.renderEntryNew(w, r, http.StatusBadRequest, "Informe uma data e uma quantidade válidas.", cycle, form)
+		return
+	}
+
+	entry, err := s.cultivation.CreateEntry(r.Context(), account.Person.ID, cycleID, input)
+	if err != nil {
+		if message, ok := validationMessage(err); ok {
+			s.renderEntryNew(w, r, http.StatusBadRequest, message, cycle, form)
+			return
+		}
+		s.logger.Error("create entry", "error", err)
+		s.renderEntryNew(w, r, http.StatusInternalServerError, "Não foi possível salvar o registro. Tente novamente.", cycle, form)
+		return
+	}
+
+	http.Redirect(w, r, "/diario/"+cycleID+"#registro-"+entry.ID, http.StatusSeeOther)
+}
+
+func (s *server) renderCycleNew(w http.ResponseWriter, r *http.Request, status int, message string, form cultivation.Cycle) {
+	if form.StartedOn.IsZero() {
+		form.StartedOn = time.Now()
+	}
+	if form.Environment == "" {
+		form.Environment = cultivation.EnvironmentOutdoor
+	}
+	if form.Stage == "" {
+		form.Stage = cultivation.StageGermination
+	}
+	if form.Visibility == "" {
+		form.Visibility = cultivation.VisibilityPrivate
+	}
+
+	data := s.newPage(w, r)
+	data.Error = message
+	data.FormCycle = form
+	data.IsNew = true
+	s.render(w, status, "cycle_new.html", data)
+}
+
+func (s *server) renderCycleEdit(w http.ResponseWriter, r *http.Request, status int, message string, form cultivation.Cycle) {
+	data := s.newPage(w, r)
+	data.Error = message
+	data.FormCycle = form
+	data.Cycle = &form
+	data.CanEdit = true
+	s.render(w, status, "cycle_edit.html", data)
+}
+
+func (s *server) renderEntryNew(w http.ResponseWriter, r *http.Request, status int, message string, cycle *cultivation.Cycle, form cultivation.Entry) {
+	data := s.newPage(w, r)
+	data.Error = message
+	data.Cycle = cycle
+	data.FormEntry = form
+	data.MeasurementsText = measurementsText(form.Measurements)
+	data.InterventionsText = listText(form.Interventions)
+	data.OccurrencesText = listText(form.Occurrences)
+	data.Practices = s.publicPractices(r)
+	s.render(w, status, "entry_new.html", data)
+}
+
+func (s *server) publicPractices(r *http.Request) []practices.Practice {
+	if s.practices == nil {
+		return nil
+	}
+
+	list, err := s.practices.ListPublicPractices(r.Context(), practices.Filter{Limit: 100})
+	if err != nil {
+		s.logger.Warn("list public practices", "error", err)
+		return nil
+	}
+	return list
+}
+
+func cycleInputFromForm(r *http.Request) (cultivation.CycleInput, cultivation.Cycle, error) {
+	startedOn, err := parseDate(r.PostFormValue("started_on"))
+	if err != nil {
+		return cultivation.CycleInput{}, cultivation.Cycle{}, err
+	}
+
+	input := cultivation.CycleInput{
+		Name:        r.PostFormValue("name"),
+		Species:     r.PostFormValue("species"),
+		Variety:     r.PostFormValue("variety"),
+		Category:    r.PostFormValue("category"),
+		Environment: cultivation.Environment(r.PostFormValue("environment")),
+		Location:    r.PostFormValue("location"),
+		Substrate:   r.PostFormValue("substrate"),
+		Container:   r.PostFormValue("container"),
+		Technique:   r.PostFormValue("technique"),
+		Stage:       cultivation.Stage(r.PostFormValue("stage")),
+		Visibility:  cultivation.Visibility(r.PostFormValue("visibility")),
+		StartedOn:   startedOn,
+	}
+
+	form := cultivation.Cycle{
+		Name:        input.Name,
+		Species:     input.Species,
+		Variety:     input.Variety,
+		Category:    input.Category,
+		Environment: input.Environment,
+		Location:    input.Location,
+		Substrate:   input.Substrate,
+		Container:   input.Container,
+		Technique:   input.Technique,
+		Stage:       input.Stage,
+		Visibility:  input.Visibility,
+		StartedOn:   startedOn,
+	}
+
+	return input, form, nil
+}
+
+func cycleUpdateInputFromForm(r *http.Request) (cultivation.CycleUpdateInput, cultivation.Cycle, error) {
+	startedOn, err := parseDate(r.PostFormValue("started_on"))
+	if err != nil {
+		return cultivation.CycleUpdateInput{}, cultivation.Cycle{}, err
+	}
+	finishedOn, err := parseOptionalDate(r.PostFormValue("finished_on"))
+	if err != nil {
+		return cultivation.CycleUpdateInput{}, cultivation.Cycle{}, err
+	}
+
+	input := cultivation.CycleUpdateInput{
+		Name:        r.PostFormValue("name"),
+		Species:     r.PostFormValue("species"),
+		Variety:     r.PostFormValue("variety"),
+		Category:    r.PostFormValue("category"),
+		Environment: cultivation.Environment(r.PostFormValue("environment")),
+		Location:    r.PostFormValue("location"),
+		Substrate:   r.PostFormValue("substrate"),
+		Container:   r.PostFormValue("container"),
+		Technique:   r.PostFormValue("technique"),
+		Stage:       cultivation.Stage(r.PostFormValue("stage")),
+		Status:      cultivation.Status(r.PostFormValue("status")),
+		Visibility:  cultivation.Visibility(r.PostFormValue("visibility")),
+		StartedOn:   startedOn,
+		FinishedOn:  finishedOn,
+		Outcome:     r.PostFormValue("outcome"),
+	}
+
+	form := cultivation.Cycle{
+		Name:        input.Name,
+		Species:     input.Species,
+		Variety:     input.Variety,
+		Category:    input.Category,
+		Environment: input.Environment,
+		Location:    input.Location,
+		Substrate:   input.Substrate,
+		Container:   input.Container,
+		Technique:   input.Technique,
+		Stage:       input.Stage,
+		Status:      input.Status,
+		Visibility:  input.Visibility,
+		StartedOn:   input.StartedOn,
+		FinishedOn:  input.FinishedOn,
+		Outcome:     input.Outcome,
+	}
+
+	return input, form, nil
+}
+
+func entryInputFromForm(r *http.Request) (cultivation.EntryInput, cultivation.Entry, error) {
+	occurredAt, err := parseDateTime(r.PostFormValue("occurred_at"))
+	if err != nil {
+		return cultivation.EntryInput{}, cultivation.Entry{}, err
+	}
+	quantity, err := parseOptionalFloat(r.PostFormValue("harvest_quantity"))
+	if err != nil {
+		return cultivation.EntryInput{}, cultivation.Entry{}, err
+	}
+
+	input := cultivation.EntryInput{
+		OccurredAt:      occurredAt,
+		Body:            r.PostFormValue("body"),
+		Stage:           parseOptionalStage(r.PostFormValue("stage")),
+		Measurements:    parseMeasurements(r.PostFormValue("measurements")),
+		Interventions:   parseList(r.PostFormValue("interventions")),
+		Occurrences:     parseList(r.PostFormValue("occurrences")),
+		HarvestQuantity: quantity,
+		HarvestUnit:     r.PostFormValue("harvest_unit"),
+		PracticeID:      r.PostFormValue("practice_id"),
+		Visibility:      cultivation.EntryVisibility(r.PostFormValue("visibility")),
+	}
+
+	form := cultivation.Entry{
+		OccurredAt:      input.OccurredAt,
+		Body:            input.Body,
+		Stage:           input.Stage,
+		Measurements:    input.Measurements,
+		Interventions:   input.Interventions,
+		Occurrences:     input.Occurrences,
+		HarvestQuantity: input.HarvestQuantity,
+		HarvestUnit:     input.HarvestUnit,
+		PracticeID:      input.PracticeID,
+		Visibility:      input.Visibility,
+	}
+
+	return input, form, nil
+}

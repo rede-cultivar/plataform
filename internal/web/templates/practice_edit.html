@@ -1,0 +1,94 @@
+{{define "content"}}
+<section class="panel panel-wide">
+  <h1>Editar prática</h1>
+  <p class="muted">
+    {{.FormPractice.Title}} · versão {{.FormPractice.Version}} ·
+    {{.FormPractice.Status.Label}}
+  </p>
+
+  <form method="post" action="/praticas/{{.FormPractice.ID}}/editar" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <label>
+      Título
+      <input type="text" name="title" value="{{.FormPractice.Title}}" maxlength="160" required>
+    </label>
+
+    <label>
+      Resumo
+      <textarea name="summary" rows="3" maxlength="500">{{.FormPractice.Summary}}</textarea>
+    </label>
+
+    <label>
+      Categoria
+      <input type="text" name="category" value="{{.FormPractice.Category}}" maxlength="80">
+    </label>
+
+    <label>
+      Dificuldade
+      <select name="difficulty">
+        <option value="beginner" {{if eq (printf "%s" .FormPractice.Difficulty) "beginner"}}selected{{end}}>Iniciante</option>
+        <option value="intermediate" {{if eq (printf "%s" .FormPractice.Difficulty) "intermediate"}}selected{{end}}>Intermediário</option>
+        <option value="advanced" {{if eq (printf "%s" .FormPractice.Difficulty) "advanced"}}selected{{end}}>Avançado</option>
+      </select>
+    </label>
+
+    <label>
+      Tempo estimado
+      <input type="text" name="time_estimate" value="{{.FormPractice.TimeEstimate}}" maxlength="80">
+    </label>
+
+    <label>
+      Custo aproximado
+      <input type="text" name="cost_estimate" value="{{.FormPractice.CostEstimate}}" maxlength="80">
+    </label>
+
+    <label>
+      Materiais e ferramentas
+      <textarea name="materials" rows="6">{{.MaterialsText}}</textarea>
+      <span class="hint">Um item por linha.</span>
+    </label>
+
+    <label>
+      Passo a passo
+      <textarea name="steps" rows="8">{{.StepsText}}</textarea>
+      <span class="hint">Uma etapa por linha.</span>
+    </label>
+
+    <label>
+      Avisos de segurança e riscos
+      <textarea name="safety" rows="4" maxlength="2000">{{.FormPractice.Safety}}</textarea>
+    </label>
+
+    <label>
+      Adaptações e variações
+      <textarea name="adaptations" rows="4" maxlength="2000">{{.FormPractice.Adaptations}}</textarea>
+    </label>
+
+    <label>
+      Referências
+      <textarea name="references" rows="3" maxlength="2000">{{.FormPractice.References}}</textarea>
+    </label>
+
+    <label>
+      Licença
+      <input type="text" name="license" value="{{.FormPractice.License}}" maxlength="120">
+    </label>
+
+    <div class="actions">
+      <button type="submit" name="action" value="save">Salvar</button>
+      <button type="submit" name="action" value="publish" class="button-secondary">Salvar e publicar</button>
+      <a class="button button-secondary" href="/praticas/{{.FormPractice.ID}}">Cancelar</a>
+    </div>
+  </form>
+
+  {{if ne (printf "%s" .FormPractice.Status) "archived"}}
+    <form method="post" action="/praticas/{{.FormPractice.ID}}/arquivar" class="stack">
+      <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+      <div class="actions">
+        <button type="submit" class="button-danger">Arquivar prática</button>
+      </div>
+    </form>
+  {{end}}
+</section>
+{{end}}

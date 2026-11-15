@@ -1,0 +1,25 @@
+{{define "content"}}
+<section class="panel">
+  <h1>Entrar</h1>
+  <p class="muted">Acesse sua conta para publicar e acompanhar a comunidade.</p>
+
+  <form method="post" action="/entrar" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+    <input type="hidden" name="next" value="{{.Next}}">
+
+    <label>
+      E-mail
+      <input type="email" name="email" value="{{.Email}}" maxlength="254" autocomplete="email" required>
+    </label>
+
+    <label>
+      Senha
+      <input type="password" name="password" maxlength="128" autocomplete="current-password" required>
+    </label>
+
+    <button type="submit">Entrar</button>
+  </form>
+
+  <p class="muted">Ainda não tem conta? <a href="/cadastro">Criar conta</a>.</p>
+</section>
+{{end}}

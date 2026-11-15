@@ -1,0 +1,42 @@
+{{define "base"}}
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.InstanceName}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">{{.InstanceName}}</a>
+    <nav class="site-nav">
+      <a href="/diario">Diário</a>
+      <a href="/praticas">Práticas</a>
+      {{if .Account}}
+        <a href="/perfil/{{.Account.Person.Handle}}">Meu perfil</a>
+        <a href="/conta">Minha conta</a>
+        <form method="post" action="/sair" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+          <button type="submit" class="link-button">Sair</button>
+        </form>
+      {{else}}
+        <a href="/entrar">Entrar</a>
+        <a href="/cadastro">Criar conta</a>
+      {{end}}
+      <span class="badge">ambiente {{.Env}}</span>
+    </nav>
+  </header>
+
+  <main>
+    {{if .Error}}<p class="alert alert-error" role="alert">{{.Error}}</p>{{end}}
+    {{if .Notice}}<p class="alert alert-success" role="status">{{.Notice}}</p>{{end}}
+    {{template "content" .}}
+  </main>
+
+  <footer>
+    <p>Cultivar · versão {{.Version}} · {{.Year}}</p>
+  </footer>
+</body>
+</html>
+{{end}}

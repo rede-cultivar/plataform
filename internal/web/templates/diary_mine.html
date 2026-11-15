@@ -1,0 +1,35 @@
+{{define "content"}}
+<section class="page-head">
+  <h1>Meu diário</h1>
+  <p class="muted">Seus ciclos de cultivo, incluindo os privados.</p>
+  <p class="actions">
+    <a class="button" href="/diario/novo">Novo ciclo</a>
+    <a class="button button-secondary" href="/diario">Descobrir ciclos públicos</a>
+  </p>
+</section>
+
+{{if .Cycles}}
+  <ul class="cards">
+    {{range .Cycles}}
+      <li class="card">
+        <h2><a href="/diario/{{.ID}}">{{.Name}}</a></h2>
+        <p class="muted">
+          {{.Species}}{{if .Variety}} · {{.Variety}}{{end}} ·
+          {{.Environment.Label}} · {{.Stage.Label}}
+        </p>
+        <p class="muted">
+          {{.Status.Label}} · {{.Visibility.Label}} ·
+          início em {{.StartedOn.Format "02/01/2006"}} ·
+          {{.EntryCount}} registro{{if ne .EntryCount 1}}s{{end}}
+        </p>
+        <p class="actions">
+          <a class="button button-secondary" href="/diario/{{.ID}}/registros/novo">Novo registro</a>
+          <a class="button button-secondary" href="/diario/{{.ID}}/editar">Editar ciclo</a>
+        </p>
+      </li>
+    {{end}}
+  </ul>
+{{else}}
+  <p class="muted">Você ainda não registrou nenhum ciclo de cultivo.</p>
+{{end}}
+{{end}}

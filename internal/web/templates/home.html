@@ -1,0 +1,27 @@
+{{define "content"}}
+<section class="hero">
+  <h1>{{.InstanceName}}</h1>
+  <p>Infraestrutura digital comunitária para cultivo, agroecologia e colaboração.</p>
+  <p class="muted">
+    Esta é a base de desenvolvimento da plataforma. A federação e os recursos
+    de comunidade serão adicionados incrementalmente.
+  </p>
+
+  {{if .Account}}
+    <p class="actions">
+      <a class="button" href="/conta">Minha conta</a>
+      <a class="button button-secondary" href="/perfil/{{.Account.Person.Handle}}">Ver meu perfil</a>
+    </p>
+  {{else}}
+    <p class="actions">
+      <a class="button" href="/cadastro">Criar conta</a>
+      <a class="button button-secondary" href="/entrar">Entrar</a>
+    </p>
+  {{end}}
+
+  <ul class="links">
+    <li><a href="/healthz">/healthz</a> — verificação de vida</li>
+    <li><a href="/readyz">/readyz</a> — prontidão (banco e armazenamento)</li>
+  </ul>
+</section>
+{{end}}

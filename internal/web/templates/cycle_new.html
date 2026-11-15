@@ -1,0 +1,99 @@
+{{define "content"}}
+<section class="panel panel-wide">
+  <h1>Novo ciclo de cultivo</h1>
+  <p class="muted">
+    Registre o contexto do cultivo. Observações e intervenções podem ser
+    adicionadas ao longo do tempo.
+  </p>
+
+  <form method="post" action="/diario" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <label>
+      Nome do ciclo
+      <input type="text" name="name" value="{{.FormCycle.Name}}" maxlength="120" required>
+      <span class="hint">Um nome para identificar esta experiência, como “Tomates da varanda”.</span>
+    </label>
+
+    <label>
+      Espécie
+      <input type="text" name="species" value="{{.FormCycle.Species}}" maxlength="120" required>
+    </label>
+
+    <label>
+      Variedade ou cultivar
+      <input type="text" name="variety" value="{{.FormCycle.Variety}}" maxlength="120">
+    </label>
+
+    <label>
+      Categoria
+      <input type="text" name="category" value="{{.FormCycle.Category}}" maxlength="80" placeholder="ex.: hortaliça, frutífera, medicinal">
+    </label>
+
+    <label>
+      Ambiente
+      <select name="environment">
+        <option value="indoor" {{if eq (printf "%s" .FormCycle.Environment) "indoor"}}selected{{end}}>Interno</option>
+        <option value="outdoor" {{if eq (printf "%s" .FormCycle.Environment) "outdoor"}}selected{{end}}>Externo</option>
+        <option value="greenhouse" {{if eq (printf "%s" .FormCycle.Environment) "greenhouse"}}selected{{end}}>Estufa</option>
+        <option value="nursery" {{if eq (printf "%s" .FormCycle.Environment) "nursery"}}selected{{end}}>Viveiro</option>
+        <option value="other" {{if eq (printf "%s" .FormCycle.Environment) "other"}}selected{{end}}>Outro</option>
+      </select>
+    </label>
+
+    <label>
+      Localização aproximada
+      <input type="text" name="location" value="{{.FormCycle.Location}}" maxlength="200" placeholder="ex.: quintal em São Paulo">
+      <span class="hint">Evite informar endereço ou coordenadas exatas.</span>
+    </label>
+
+    <label>
+      Substrato
+      <input type="text" name="substrate" value="{{.FormCycle.Substrate}}" maxlength="200">
+    </label>
+
+    <label>
+      Recipiente
+      <input type="text" name="container" value="{{.FormCycle.Container}}" maxlength="120" placeholder="ex.: vaso de 10 L, canteiro">
+    </label>
+
+    <label>
+      Técnica
+      <input type="text" name="technique" value="{{.FormCycle.Technique}}" maxlength="200" placeholder="ex.: plantio direto, hidroponia">
+    </label>
+
+    <label>
+      Estágio atual
+      <select name="stage">
+        <option value="germination" {{if eq (printf "%s" .FormCycle.Stage) "germination"}}selected{{end}}>Germinação</option>
+        <option value="seedling" {{if eq (printf "%s" .FormCycle.Stage) "seedling"}}selected{{end}}>Muda</option>
+        <option value="vegetative" {{if eq (printf "%s" .FormCycle.Stage) "vegetative"}}selected{{end}}>Vegetativo</option>
+        <option value="flowering" {{if eq (printf "%s" .FormCycle.Stage) "flowering"}}selected{{end}}>Floração</option>
+        <option value="fruiting" {{if eq (printf "%s" .FormCycle.Stage) "fruiting"}}selected{{end}}>Frutificação</option>
+        <option value="harvest" {{if eq (printf "%s" .FormCycle.Stage) "harvest"}}selected{{end}}>Colheita</option>
+        <option value="finished" {{if eq (printf "%s" .FormCycle.Stage) "finished"}}selected{{end}}>Encerrado</option>
+      </select>
+    </label>
+
+    <label>
+      Visibilidade
+      <select name="visibility">
+        <option value="private" {{if eq (printf "%s" .FormCycle.Visibility) "private"}}selected{{end}}>Privado</option>
+        <option value="followers" {{if eq (printf "%s" .FormCycle.Visibility) "followers"}}selected{{end}}>Seguidores</option>
+        <option value="public" {{if eq (printf "%s" .FormCycle.Visibility) "public"}}selected{{end}}>Público</option>
+      </select>
+      <span class="hint">Ciclos são privados por padrão. A publicação é uma escolha explícita.</span>
+    </label>
+
+    <label>
+      Data de início
+      <input type="date" name="started_on" value="{{.FormCycle.StartedOn.Format "2006-01-02"}}" required>
+    </label>
+
+    <div class="actions">
+      <button type="submit">Criar ciclo</button>
+      <a class="button button-secondary" href="/diario/meu">Cancelar</a>
+    </div>
+  </form>
+</section>
+{{end}}
