@@ -6,7 +6,7 @@
 
 Estamos construindo uma iniciativa comunitária voltada à conexão entre pessoas, grupos, organizações e projetos relacionados ao cultivo, à agroecologia, à biodiversidade e à sustentabilidade.
 
-A proposta é desenvolver uma plataforma aberta, descentralizada e federada, que permita compartilhar experiências, conectar iniciativas, trocar recursos e organizar ações coletivas.
+A proposta é desenvolver uma plataforma aberta, descentralizada e federada, que permita compartilhar experiências, registrar ciclos de cultivo, organizar conhecimentos práticos, conectar iniciativas, trocar recursos e organizar ações coletivas.
 
 ## Um projeto comunitário
 
