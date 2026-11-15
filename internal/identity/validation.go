@@ -12,6 +12,7 @@ const (
 	maxPasswordLength = 128
 	maxEmailLength    = 254
 	maxDisplayName    = 80
+	maxBioLength      = 500
 )
 
 var handlePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{2,29}$`)
@@ -65,6 +66,14 @@ func ValidatePassword(password string) error {
 	length := utf8.RuneCountInString(password)
 	if length < minPasswordLength || length > maxPasswordLength {
 		return ErrWeakPassword
+	}
+	return nil
+}
+
+// ValidateBio verifica o tamanho da biografia do perfil.
+func ValidateBio(bio string) error {
+	if utf8.RuneCountInString(strings.TrimSpace(bio)) > maxBioLength {
+		return ErrInvalidBio
 	}
 	return nil
 }

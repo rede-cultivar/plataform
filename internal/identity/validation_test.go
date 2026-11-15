@@ -70,3 +70,18 @@ func TestValidatePassword(t *testing.T) {
 		t.Errorf("ValidatePassword() error = %v, want ErrWeakPassword", err)
 	}
 }
+
+func TestValidateBio(t *testing.T) {
+	if err := ValidateBio("Cultivo hortas comunitárias."); err != nil {
+		t.Errorf("ValidateBio() error = %v, want nil", err)
+	}
+	if err := ValidateBio("   "); err != nil {
+		t.Errorf("ValidateBio(empty) error = %v, want nil", err)
+	}
+	if err := ValidateBio(strings.Repeat("a", 500)); err != nil {
+		t.Errorf("ValidateBio(500) error = %v, want nil", err)
+	}
+	if err := ValidateBio(strings.Repeat("a", 501)); !errors.Is(err, ErrInvalidBio) {
+		t.Errorf("ValidateBio(501) error = %v, want ErrInvalidBio", err)
+	}
+}

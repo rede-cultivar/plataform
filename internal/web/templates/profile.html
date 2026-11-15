@@ -13,7 +13,10 @@
 
   {{if .Account}}
     {{if eq .Account.Person.ID .Person.ID}}
-      <p><a href="/conta">Gerenciar minha conta</a></p>
+      <p class="actions">
+        <a class="button" href="/conta/perfil">Editar perfil</a>
+        <a class="button button-secondary" href="/conta">Minha conta</a>
+      </p>
     {{end}}
   {{end}}
 </section>

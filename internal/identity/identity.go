@@ -18,6 +18,7 @@ var (
 	ErrInvalidEmail       = errors.New("e-mail inválido")
 	ErrInvalidHandle      = errors.New("identificador inválido")
 	ErrInvalidDisplayName = errors.New("nome de exibição inválido")
+	ErrInvalidBio         = errors.New("biografia inválida")
 	ErrWeakPassword       = errors.New("senha fraca")
 	ErrNotFound           = errors.New("registro não encontrado")
 	ErrSessionExpired     = errors.New("sessão expirada")
@@ -56,4 +57,11 @@ type Session struct {
 	AccountID         string
 	IdleExpiresAt     time.Time
 	AbsoluteExpiresAt time.Time
+}
+
+// Stats reúne contagens usadas pelo NodeInfo e por relatórios simples.
+type Stats struct {
+	TotalAccounts  int
+	ActiveMonth    int
+	ActiveHalfyear int
 }

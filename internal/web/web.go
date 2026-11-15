@@ -32,6 +32,7 @@ type IdentityService interface {
 	AuthenticateSession(ctx context.Context, token string) (*identity.Account, error)
 	EndSession(ctx context.Context, token string) error
 	FindPersonByHandle(ctx context.Context, handle string) (*identity.Person, error)
+	UpdateProfile(ctx context.Context, personID, displayName, bio string) (*identity.Person, error)
 }
 
 // Deps reúne as dependências necessárias para montar o roteador HTTP.
@@ -65,10 +66,12 @@ type pageData struct {
 	Person    *identity.Person
 	CSRFToken string
 	Error     string
+	Notice    string
 
 	Email       string
 	Handle      string
 	DisplayName string
+	Bio         string
 	Next        string
 }
 
@@ -77,6 +80,7 @@ var pageFiles = []string{
 	"register.html",
 	"login.html",
 	"profile.html",
+	"profile_edit.html",
 	"account.html",
 }
 
@@ -124,6 +128,8 @@ func NewRouter(deps Deps) http.Handler {
 
 	router.Get("/perfil/{handle}", s.profile)
 	router.Get("/conta", s.requireAccount(s.account))
+	router.Get("/conta/perfil", s.requireAccount(s.profileEditForm))
+	router.Post("/conta/perfil", s.requireAccount(s.profileEdit))
 
 	router.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 

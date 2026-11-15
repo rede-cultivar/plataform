@@ -143,6 +143,31 @@ func (s *Service) FindPersonByHandle(ctx context.Context, handle string) (*Perso
 	return s.store.FindPersonByHandle(ctx, NormalizeHandle(handle))
 }
 
+// FindPersonByID busca o perfil público pelo identificador interno.
+func (s *Service) FindPersonByID(ctx context.Context, id string) (*Person, error) {
+	return s.store.FindPersonByID(ctx, strings.TrimSpace(id))
+}
+
+// UpdateProfile valida e atualiza o nome de exibição e a biografia.
+func (s *Service) UpdateProfile(ctx context.Context, personID, displayName, bio string) (*Person, error) {
+	displayName = strings.TrimSpace(displayName)
+	bio = strings.TrimSpace(bio)
+
+	if err := ValidateDisplayName(displayName); err != nil {
+		return nil, err
+	}
+	if err := ValidateBio(bio); err != nil {
+		return nil, err
+	}
+
+	return s.store.UpdatePersonProfile(ctx, personID, displayName, bio)
+}
+
+// Stats retorna contagens de contas usadas pelo NodeInfo.
+func (s *Service) Stats(ctx context.Context) (Stats, error) {
+	return s.store.AccountStats(ctx)
+}
+
 func newSessionToken() (string, error) {
 	buffer := make([]byte, 32)
 	if _, err := rand.Read(buffer); err != nil {

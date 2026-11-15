@@ -180,13 +180,19 @@ button:hover {
   font-weight: 600;
 }
 
-.stack input {
+.stack input,
+.stack textarea {
   padding: 0.6rem 0.7rem;
   border: 1px solid var(--border);
   border-radius: 0.4rem;
   background: var(--background);
   color: inherit;
   font: inherit;
+}
+
+.stack textarea {
+  resize: vertical;
+  min-height: 8rem;
 }
 
 .stack button {
@@ -213,11 +219,23 @@ button:hover {
   color: #8c1d18;
 }
 
+.alert-success {
+  border-color: #2f6b3a;
+  background: rgba(47, 107, 58, 0.08);
+  color: #24542d;
+}
+
 @media (prefers-color-scheme: dark) {
   .alert-error {
     border-color: #f2b8b5;
     background: rgba(242, 184, 181, 0.08);
     color: #f2b8b5;
+  }
+
+  .alert-success {
+    border-color: #8fc99a;
+    background: rgba(143, 201, 154, 0.08);
+    color: #8fc99a;
   }
 }
 

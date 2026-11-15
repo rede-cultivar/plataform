@@ -28,6 +28,7 @@
 
   <main>
     {{if .Error}}<p class="alert alert-error" role="alert">{{.Error}}</p>{{end}}
+    {{if .Notice}}<p class="alert alert-success" role="status">{{.Notice}}</p>{{end}}
     {{template "content" .}}
   </main>
 

@@ -144,6 +144,83 @@ func (s *Store) FindPersonByHandle(ctx context.Context, handle string) (*Person,
 	return &person, nil
 }
 
+// FindPersonByID busca o perfil público pelo identificador interno.
+func (s *Store) FindPersonByID(ctx context.Context, id string) (*Person, error) {
+	var person Person
+
+	err := s.db.QueryRow(ctx, `
+		SELECT id::text, handle, display_name, bio, created_at
+		FROM people
+		WHERE id::text = $1
+	`, id).Scan(
+		&person.ID,
+		&person.Handle,
+		&person.DisplayName,
+		&person.Bio,
+		&person.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &person, nil
+}
+
+// UpdatePersonProfile atualiza o nome de exibição e a biografia.
+func (s *Store) UpdatePersonProfile(ctx context.Context, personID, displayName, bio string) (*Person, error) {
+	var person Person
+
+	err := s.db.QueryRow(ctx, `
+		UPDATE people
+		SET display_name = $2,
+		    bio = $3,
+		    updated_at = now()
+		WHERE id::text = $1
+		RETURNING id::text, handle, display_name, bio, created_at
+	`, personID, displayName, bio).Scan(
+		&person.ID,
+		&person.Handle,
+		&person.DisplayName,
+		&person.Bio,
+		&person.CreatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &person, nil
+}
+
+// AccountStats retorna contagens de contas usadas pelo NodeInfo.
+func (s *Store) AccountStats(ctx context.Context) (Stats, error) {
+	var stats Stats
+
+	err := s.db.QueryRow(ctx, `
+		SELECT
+			count(*) FILTER (WHERE a.status = 'active'),
+			count(*) FILTER (WHERE a.status = 'active' AND EXISTS (
+				SELECT 1 FROM sessions s
+				WHERE s.account_id = a.id AND s.last_seen_at > now() - interval '30 days'
+			)),
+			count(*) FILTER (WHERE a.status = 'active' AND EXISTS (
+				SELECT 1 FROM sessions s
+				WHERE s.account_id = a.id AND s.last_seen_at > now() - interval '180 days'
+			))
+		FROM accounts a
+	`).Scan(&stats.TotalAccounts, &stats.ActiveMonth, &stats.ActiveHalfyear)
+	if err != nil {
+		return Stats{}, err
+	}
+
+	return stats, nil
+}
+
 // CreateSession registra uma nova sessão com o hash do token.
 func (s *Store) CreateSession(ctx context.Context, accountID string, tokenHash []byte, idleExpiresAt, absoluteExpiresAt time.Time, ipAddress, userAgent string) (*Session, error) {
 	var session Session

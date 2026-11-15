@@ -25,6 +25,8 @@ type fakeIdentity struct {
 	sessions    map[string]*identity.Account
 	registerErr error
 	authErr     error
+	updateErr   error
+	stats       identity.Stats
 	nextID      int
 }
 
@@ -106,6 +108,43 @@ func (f *fakeIdentity) FindPersonByHandle(_ context.Context, handle string) (*id
 		return nil, identity.ErrNotFound
 	}
 	return person, nil
+}
+
+func (f *fakeIdentity) FindPersonByID(_ context.Context, id string) (*identity.Person, error) {
+	for _, person := range f.people {
+		if person.ID == id {
+			return person, nil
+		}
+	}
+	return nil, identity.ErrNotFound
+}
+
+func (f *fakeIdentity) UpdateProfile(_ context.Context, personID, displayName, bio string) (*identity.Person, error) {
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+
+	for _, person := range f.people {
+		if person.ID == personID {
+			person.DisplayName = displayName
+			person.Bio = bio
+
+			for _, account := range f.accounts {
+				if account.Person.ID == personID {
+					account.Person.DisplayName = displayName
+					account.Person.Bio = bio
+				}
+			}
+
+			return person, nil
+		}
+	}
+
+	return nil, identity.ErrNotFound
+}
+
+func (f *fakeIdentity) Stats(_ context.Context) (identity.Stats, error) {
+	return f.stats, nil
 }
 
 func newAuthTestRouter(t *testing.T, identityService IdentityService) http.Handler {

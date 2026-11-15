@@ -19,6 +19,9 @@
     <dd>{{.Account.CreatedAt.Format "02/01/2006"}}</dd>
   </dl>
 
-  <p><a href="/perfil/{{.Account.Person.Handle}}">Ver perfil público</a></p>
+  <p class="actions">
+    <a class="button" href="/conta/perfil">Editar perfil</a>
+    <a class="button button-secondary" href="/perfil/{{.Account.Person.Handle}}">Ver perfil público</a>
+  </p>
 </section>
 {{end}}

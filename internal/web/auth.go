@@ -68,7 +68,12 @@ func (s *server) requireAccount(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func isPublicPath(path string) bool {
-	return strings.HasPrefix(path, "/static/") || path == "/healthz" || path == "/readyz"
+	return strings.HasPrefix(path, "/static/") ||
+		strings.HasPrefix(path, "/.well-known/") ||
+		strings.HasPrefix(path, "/nodeinfo/") ||
+		strings.HasPrefix(path, "/actors/") ||
+		path == "/healthz" ||
+		path == "/readyz"
 }
 
 func (s *server) registerForm(w http.ResponseWriter, r *http.Request) {
@@ -219,6 +224,81 @@ func (s *server) logout(w http.ResponseWriter, r *http.Request) {
 	s.clearSessionCookie(w)
 	s.rotateCSRF(w)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// profileEditForm exibe o formulário de edição do perfil da conta atual.
+func (s *server) profileEditForm(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+
+	data := s.newPage(w, r)
+	data.DisplayName = account.Person.DisplayName
+	data.Bio = account.Person.Bio
+
+	if r.URL.Query().Has("atualizado") {
+		data.Notice = "Perfil atualizado."
+	}
+
+	s.render(w, http.StatusOK, "profile_edit.html", data)
+}
+
+// profileEdit valida e salva o nome de exibição e a biografia.
+func (s *server) profileEdit(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.identity == nil {
+		http.Error(w, "edição de perfil indisponível", http.StatusServiceUnavailable)
+		return
+	}
+	if !s.parseForm(w, r) {
+		return
+	}
+	if !s.validateCSRF(r) {
+		s.renderProfileEdit(w, r, http.StatusForbidden, "Sessão do formulário expirada. Tente novamente.", account.Person.DisplayName, account.Person.Bio)
+		return
+	}
+
+	displayName := strings.TrimSpace(r.PostFormValue("display_name"))
+	bio := strings.TrimSpace(r.PostFormValue("bio"))
+
+	if _, err := s.identity.UpdateProfile(r.Context(), account.Person.ID, displayName, bio); err != nil {
+		if message, ok := profileErrorMessage(err); ok {
+			s.renderProfileEdit(w, r, http.StatusBadRequest, message, displayName, bio)
+			return
+		}
+
+		s.logger.Error("update profile", "error", err)
+		s.renderProfileEdit(w, r, http.StatusInternalServerError, "Não foi possível atualizar o perfil. Tente novamente.", displayName, bio)
+		return
+	}
+
+	http.Redirect(w, r, "/conta/perfil?atualizado=1", http.StatusSeeOther)
+}
+
+func (s *server) renderProfileEdit(w http.ResponseWriter, r *http.Request, status int, message, displayName, bio string) {
+	data := s.newPage(w, r)
+	data.Error = message
+	data.DisplayName = displayName
+	data.Bio = bio
+
+	s.render(w, status, "profile_edit.html", data)
+}
+
+func profileErrorMessage(err error) (string, bool) {
+	switch {
+	case errors.Is(err, identity.ErrInvalidDisplayName):
+		return "Informe um nome de exibição com até 80 caracteres.", true
+	case errors.Is(err, identity.ErrInvalidBio):
+		return "A biografia deve ter no máximo 500 caracteres.", true
+	default:
+		return "", false
+	}
 }
 
 func (s *server) renderRegister(w http.ResponseWriter, r *http.Request, status int, message, email, handle, displayName string) {
