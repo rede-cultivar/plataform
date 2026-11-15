@@ -1,6 +1,6 @@
 # ADR 0005 — Persistência e armazenamento
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-05
 
 ## Contexto
@@ -40,6 +40,8 @@ Entre elas:
 - Organizações.
 - Projetos e iniciativas.
 - Publicações e comentários.
+- Ciclos e registros de cultivo.
+- Práticas e histórico de versões.
 - Ofertas e pedidos.
 - Atividades e eventos.
 - Configurações e permissões.

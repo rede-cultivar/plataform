@@ -1,6 +1,6 @@
 # ADR 0010 — Empacotamento, implantação e atualização
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-10
 
 ## Contexto

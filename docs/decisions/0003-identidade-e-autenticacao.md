@@ -1,6 +1,6 @@
 # ADR 0003 — Identidade e autenticação
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-05
 
 ## Contexto

@@ -76,6 +76,8 @@ Deverá oferecer interfaces para:
 
 - Cadastro e gerenciamento de perfis.
 - Publicações e interações.
+- Diário de cultivo e acompanhamento de ciclos.
+- Consulta e publicação de práticas de cultivo.
 - Consulta de projetos.
 - Participação em grupos.
 - Identidades de organizações.
@@ -112,6 +114,9 @@ Entre os conceitos principais estão:
 - Organização.
 - Projeto.
 - Publicação.
+- Ciclo de cultivo.
+- Registro de cultivo.
+- Prática.
 - Recurso.
 - Atividade.
 - Local.
@@ -179,7 +184,40 @@ Responsável por:
 
 Este domínio deverá oferecer mecanismos de integração com a federação.
 
-### 5.4. Projetos
+### 5.4. Diário de cultivo
+
+Responsável pelo registro estruturado e cronológico das experiências de cultivo.
+
+Deverá permitir:
+
+- Criar e acompanhar ciclos de cultivo.
+- Registrar observações, imagens, medidas e intervenções.
+- Identificar espécies, variedades, ambiente, substrato e recipiente.
+- Registrar ocorrências, colheita e avaliação final.
+- Controlar a visibilidade de ciclos e registros.
+- Filtrar experiências por espécie, ambiente, técnica, estágio, problema e resultado.
+- Produzir indicadores descritivos a partir dos dados registrados.
+- Relacionar registros a práticas utilizadas.
+
+O domínio não deverá emitir diagnóstico ou prescrição agronômica nem assumir funções de gestão operacional completa.
+
+### 5.5. Conhecimento e práticas
+
+Responsável pela organização de conhecimentos práticos reproduzíveis.
+
+Deverá permitir:
+
+- Criar, publicar e versionar práticas.
+- Descrever materiais, ferramentas, etapas, riscos e adaptações.
+- Categorizar práticas por aplicabilidade, dificuldade, tempo e custo.
+- Receber comentários, perguntas e relatos de uso.
+- Relacionar práticas a ciclos e resultados observados.
+- Preservar autoria, licença e histórico de alterações.
+- Oferecer avisos de segurança e mecanismos de moderação.
+
+A biblioteca não substitui cursos formais, assistência técnica ou prescrição profissional.
+
+### 5.6. Projetos
 
 Responsável pela representação das iniciativas concretas.
 
@@ -193,7 +231,7 @@ Um projeto poderá conter:
 - Localização opcional.
 - Histórico de atualizações.
 
-### 5.5. Grupos e organizações
+### 5.7. Grupos e organizações
 
 Responsável pelas entidades coletivas e seus mecanismos de participação.
 
@@ -206,7 +244,7 @@ Uma organização poderá manter vários projetos e participar de diferentes gru
 
 Um grupo poderá reunir pessoas e projetos associados a diferentes organizações.
 
-### 5.6. Compartilhamento de recursos
+### 5.8. Compartilhamento de recursos
 
 Responsável por representar ofertas e necessidades de recursos.
 
@@ -220,7 +258,7 @@ Deverá permitir:
 
 O domínio não deverá pressupor operações comerciais ou transações financeiras.
 
-### 5.7. Atividades e mobilização
+### 5.9. Atividades e mobilização
 
 Responsável pela organização de:
 
@@ -232,7 +270,7 @@ Responsável pela organização de:
 
 As atividades poderão estar associadas a pessoas, grupos, organizações e projetos.
 
-### 5.8. Federação
+### 5.10. Federação
 
 Responsável pela comunicação com outras instâncias e pela tradução entre os modelos internos e os formatos utilizados no Fediverso.
 
@@ -276,6 +314,8 @@ A identidade federada será uma representação externa da identidade mantida pe
 Publicações internas poderão ser representadas por objetos ActivityStreams.
 
 Por exemplo, uma experiência compartilhada por uma pessoa poderá ser representada por um objeto `Note`.
+
+Registros públicos de cultivo poderão ser representados por `Note` ou `Article`, e práticas públicas por `Article`. Campos estruturados específicos do produto, como espécie, medidas e intervenções, deverão usar extensão própria e permanecer opcionais para consumidores externos.
 
 As ações realizadas sobre publicações poderão ser representadas por atividades como:
 
@@ -403,8 +443,10 @@ O modelo deverá permitir:
 - Auditoria de operações relevantes.
 - Retenção e exclusão de dados conforme as políticas estabelecidas.
 - Separação entre dados internos e referências externas.
+- Consultas por filtros sobre ciclos, registros e práticas.
+- Histórico de versões e auditoria de alterações relevantes.
 
-Imagens e arquivos deverão ser tratados separadamente dos registros principais de domínio, utilizando armazenamento apropriado.
+Imagens e arquivos deverão ser tratados separadamente dos registros principais de domínio, utilizando armazenamento apropriado. Registros de cultivo e práticas poderão reunir várias imagens e anexos, que não deverão ser armazenados diretamente nas tabelas de domínio.
 
 A escolha do banco de dados e das tecnologias de armazenamento será registrada em decisões arquiteturais específicas.
 
@@ -476,32 +518,41 @@ A primeira versão deverá priorizar:
 1. Modelo de domínio e persistência.
 2. Identidade e autenticação.
 3. Publicações e interações.
-4. Integração básica com ActivityPub.
-5. Processamento assíncrono.
-6. Segurança e observabilidade.
+4. Diário de cultivo e práticas.
+5. Integração básica com ActivityPub.
+6. Processamento assíncrono.
+7. Segurança e observabilidade.
 
 Os domínios de projetos, grupos, organizações, recursos e atividades deverão ser incorporados conforme a evolução do produto.
 
 A arquitetura não deverá antecipar infraestrutura distribuída ou serviços independentes sem justificativa técnica e operacional.
 
-## 14. Decisões arquiteturais pendentes
+## 14. Decisões arquiteturais
 
-As seguintes decisões deverão ser registradas e amadurecidas antes ou durante a implementação:
+As principais decisões técnicas estão registradas em Architecture Decision Records (ADRs), disponíveis em [`docs/decisions/`](decisions/README.md).
 
-- Linguagem e framework do backend.
-- Tecnologia da interface de usuário.
-- Banco de dados principal.
-- Estratégia de armazenamento de arquivos.
-- Modelo de autenticação e gerenciamento de sessões.
-- Estratégia de autorização.
-- Tecnologia de filas e processamento assíncrono.
-- Estratégia de implantação e distribuição.
+| Tema | Decisão | ADR |
+| --- | --- | --- |
+| Linguagem e framework do backend | Go com `chi` | [0007](decisions/0007-stack-da-aplicacao.md) |
+| Tecnologia da interface de usuário | HTML renderizado no servidor com `html/template` e HTMX | [0007](decisions/0007-stack-da-aplicacao.md) |
+| Banco de dados principal | PostgreSQL | [0005](decisions/0005-persistencia-e-armazenamento.md), [0007](decisions/0007-stack-da-aplicacao.md) |
+| Estratégia de armazenamento de arquivos | Serviço compatível com a API S3 | [0005](decisions/0005-persistencia-e-armazenamento.md), [0007](decisions/0007-stack-da-aplicacao.md) |
+| Modelo de autenticação e sessões | Sessões no servidor com token opaco | [0008](decisions/0008-autenticacao-e-autorizacao.md) |
+| Estratégia de autorização | Permissões verificadas no domínio e na interface | [0008](decisions/0008-autenticacao-e-autorizacao.md) |
+| Filas e processamento assíncrono | Transactional Outbox no PostgreSQL | [0004](decisions/0004-estrategia-de-federacao-e-processamento-assincrono.md), [0007](decisions/0007-stack-da-aplicacao.md) |
+| Implantação e distribuição | Binário único e instâncias independentes | [0006](decisions/0006-estrategia-de-implantacao-e-operacao.md), [0010](decisions/0010-empacotamento-e-implantacao.md) |
+| Migração e atualização de instâncias | Migrações SQL versionadas e embutidas no binário | [0010](decisions/0010-empacotamento-e-implantacao.md) |
+| Diário de cultivo e biblioteca de práticas | Contextos próprios com publicação federada opcional | [0011](decisions/0011-diario-de-cultivo-e-biblioteca-de-praticas.md) |
+
+Permanecem em aberto, para amadurecimento durante a implementação:
+
 - Representação federada de grupos e organizações.
 - Política de visibilidade e distribuição de publicações.
 - Estratégia de versionamento e compatibilidade de APIs.
-- Estratégia de migração e atualização de instâncias.
+- Modelo físico e filtros do diário de cultivo.
+- Curadoria, versionamento e licenciamento das práticas.
 
-As decisões deverão ser documentadas preferencialmente por meio de Architecture Decision Records (ADRs).
+Novas decisões deverão ser documentadas preferencialmente por meio de ADRs, conforme o [índice de decisões](decisions/README.md).
 
 ## 15. Relação com outros documentos
 

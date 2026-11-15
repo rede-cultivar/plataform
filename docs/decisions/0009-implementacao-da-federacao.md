@@ -1,13 +1,13 @@
 # ADR 0009 — Implementação da federação
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-10
 
 ## Contexto
 
 O ADR 0001 definiu a adoção do ActivityPub como principal protocolo de federação. O ADR 0003 estabeleceu a separação entre identidade interna e identidade federada. O ADR 0004 determinou que a comunicação federada ocorrerá predominantemente por processamento assíncrono, com idempotência, retentativas e observabilidade. O ADR 0007 definiu a stack e a fila inicial baseada em PostgreSQL.
 
-O ActivityPub é uma recomendação do W3C, mas não define todos os detalhes necessários à interoperabilidade prática. Implementações existentes adotam convenções complementares, extensões e comportamentos que precisam ser considerados. Além disso, conceitos específicos do produto, como grupos, organizações, projetos e recursos, não possuem representação padronizada completa no ActivityPub.
+O ActivityPub é uma recomendação do W3C, mas não define todos os detalhes necessários à interoperabilidade prática. Implementações existentes adotam convenções complementares, extensões e comportamentos que precisam ser considerados. Além disso, conceitos específicos do produto, como grupos, organizações, projetos, recursos, registros de cultivo e práticas, não possuem representação padronizada completa no ActivityPub.
 
 É necessário definir:
 
@@ -57,11 +57,13 @@ O mapeamento inicial será:
 | Atividade ou evento | Objeto com extensão própria |
 | Projeto | Objeto com extensão própria, não Actor na primeira versão |
 | Recurso | Objeto com extensão própria |
+| Registro de cultivo | `Note` ou `Article`, com extensão própria opcional |
+| Prática | `Article` |
 
 Diretrizes:
 
 - Pessoas, grupos e organizações poderão possuir Actors próprios.
-- Projetos e recursos não serão tratados como Actors na primeira versão, evitando complexidade de participação e moderação que o ActivityPub não padroniza.
+- Projetos, recursos, registros de cultivo e práticas não serão tratados como Actors na primeira versão, evitando complexidade de participação e moderação que o ActivityPub não padroniza.
 - Os identificadores locais de Actor deverão ser estáveis e opacos, no formato `https://{domínio}/actors/{id}`.
 - O identificador público poderá ser apresentado como `@nome@domínio`, resolvido por WebFinger.
 - Extensões do produto deverão utilizar namespace próprio e permanecer opcionais para consumidores externos.
@@ -210,7 +212,7 @@ A decisão estabelece:
 
 - Mastodon como referência inicial de compatibilidade.
 - Uso de ActivityPub, ActivityStreams, WebFinger, HTTP Signatures e NodeInfo.
-- Pessoas, grupos e organizações como Actors; projetos e recursos como objetos.
+- Pessoas, grupos e organizações como Actors; projetos, recursos, registros de cultivo e práticas como objetos.
 - Entrega assíncrona com outbox, retentativas e idempotência.
 - Validação obrigatória de assinaturas e proteções contra SSRF e abuso.
 - Mapeamento explícito de visibilidade para endereçamento ActivityPub.
@@ -235,7 +237,7 @@ Este ADR não determina ainda:
 - A implementação de listas de bloqueio compartilhadas.
 - A migração de identidades entre instâncias.
 - A rotação e recuperação de chaves federadas.
-- A representação federada detalhada de projetos, recursos e atividades.
+- A representação federada detalhada de projetos, recursos, atividades, registros de cultivo e práticas.
 - A estratégia de busca federada.
 
 Esses aspectos deverão ser detalhados em decisões posteriores.

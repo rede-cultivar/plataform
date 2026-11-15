@@ -1,6 +1,6 @@
 # ADR 0007 — Stack da aplicação
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-10
 
 ## Contexto

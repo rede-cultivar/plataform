@@ -1,6 +1,6 @@
 # ADR 0008 — Autenticação e autorização
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-10
 
 ## Contexto

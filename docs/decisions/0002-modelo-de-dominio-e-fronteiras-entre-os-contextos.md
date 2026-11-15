@@ -1,6 +1,6 @@
 # ADR 0002 — Modelo de domínio e fronteiras entre os contextos
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-05
 
 ## Contexto
@@ -134,6 +134,46 @@ Exemplos:
 
 A mobilização deverá ser compreendida como uma capacidade transversal da plataforma, podendo envolver pessoas, grupos, organizações e projetos.
 
+### 8. Diário de cultivo
+
+Responsável pelo registro estruturado e cronológico das experiências de cultivo.
+
+Conceitos principais:
+
+- **Ciclo de cultivo:** acompanhamento de um cultivo desde o início até sua conclusão ou arquivamento, com identificação, contexto, período, responsável e resultado.
+- **Registro de cultivo:** acontecimento datado dentro de um ciclo, com observações, imagens, medidas, intervenções, ocorrências e colheita.
+
+Responsabilidades:
+
+- Criar, editar, acompanhar e arquivar ciclos.
+- Registrar observações e intervenções ao longo do tempo.
+- Organizar registros por espécie, ambiente, técnica, estágio e resultado.
+- Controlar a visibilidade de ciclos e registros.
+- Produzir indicadores descritivos a partir dos dados registrados.
+- Relacionar registros a práticas utilizadas.
+
+O diário não deverá se transformar em um sistema completo de gestão agrícola nem emitir diagnóstico ou prescrição agronômica.
+
+### 9. Conhecimento e práticas
+
+Responsável pela organização de conhecimentos práticos e práticas reproduzíveis.
+
+Conceitos principais:
+
+- **Prática:** guia prático de cultivo ou faça você mesmo, como adubo caseiro, construção de recipientes, preparo de substrato, compostagem, controle de pragas ou conservação de sementes.
+
+Responsabilidades:
+
+- Criar, publicar e versionar práticas.
+- Descrever materiais, ferramentas, etapas, riscos e adaptações.
+- Categorizar práticas por aplicabilidade, dificuldade e contexto.
+- Permitir comentários, perguntas e relatos de uso.
+- Relacionar práticas a ciclos e resultados observados.
+- Preservar autoria, licença e histórico de alterações.
+- Oferecer mecanismos de moderação e aviso de segurança.
+
+A biblioteca de práticas não substitui cursos formais, assistência técnica ou prescrição profissional.
+
 ## Relações entre os conceitos
 
 As entidades deverão se relacionar sem perder sua identidade e responsabilidade próprias.
@@ -150,6 +190,12 @@ Relações conceituais iniciais:
 - Publicações podem ser realizadas por pessoas, grupos ou organizações.
 - Atividades podem ser organizadas por pessoas, grupos ou organizações.
 - Ofertas e pedidos podem estar associados a pessoas, grupos ou organizações.
+- Uma pessoa pode manter vários ciclos de cultivo.
+- Um projeto pode manter um ou mais ciclos de cultivo.
+- Um ciclo pode conter vários registros ao longo do tempo.
+- Um registro pode indicar a prática utilizada e o resultado observado.
+- Práticas podem ser criadas e mantidas por pessoas, grupos ou organizações.
+- Práticas podem ser citadas em registros, publicações e atividades.
 
 Essas relações não implicam propriedade exclusiva. A participação em um projeto, por exemplo, não significa que ele pertença exclusivamente ao grupo ou à organização que o divulga.
 
@@ -167,6 +213,8 @@ Por exemplo:
 - A associação de uma pessoa a um grupo pertence ao contexto de Grupos e Comunidades.
 - A identidade institucional pertence ao contexto de Organizações.
 - A evolução de uma iniciativa pertence ao contexto de Projetos.
+- A evolução de um ciclo de cultivo e seus registros pertence ao contexto de Diário de Cultivo.
+- A autoria, o conteúdo e a versão de uma prática pertencem ao contexto de Conhecimento e Práticas.
 - A distribuição de uma publicação federada pertence à camada de Federação.
 
 A arquitetura não deverá impor que cada contexto corresponda necessariamente a um serviço ou aplicação independente. A separação inicial será conceitual e lógica.
@@ -181,6 +229,8 @@ A decisão estabelece:
 - Menor acoplamento entre funcionalidades.
 - Maior clareza para definir permissões e responsabilidades.
 - Possibilidade de integrar os conceitos à federação sem tornar o ActivityPub responsável pelas regras de negócio internas.
+- Separação entre o registro individual de uma experiência de cultivo e o conhecimento prático compartilhado.
+- Base estruturada para filtros, comparações e aprendizagem a partir de experiências reais.
 
 Também implica maior cuidado na definição das relações e na consistência dos dados entre contextos.
 
@@ -193,8 +243,10 @@ Este ADR estabelece as fronteiras conceituais iniciais, mas não determina:
 - A estrutura de módulos ou pacotes.
 - O mecanismo de autorização e permissões.
 - O ciclo de vida detalhado de grupos e organizações.
+- O ciclo de vida detalhado de ciclos de cultivo e práticas.
 - A representação federada de cada entidade.
 - A possibilidade de uma organização administrar múltiplos grupos ou vice-versa.
+- A estratégia de curadoria, versionamento e licenciamento das práticas.
 
 Esses aspectos deverão ser detalhados conforme a evolução do projeto.
 

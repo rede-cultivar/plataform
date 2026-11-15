@@ -1,6 +1,6 @@
 # ADR 0006 — Estratégia de implantação e operação de instâncias
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-05
 
 ## Contexto

@@ -1,6 +1,6 @@
 # ADR 0001 — Aplicação própria integrada ao Fediverso
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-05
 
 ## Contexto
@@ -16,6 +16,8 @@ Entre esses conceitos estão:
 - Projetos de cultivo e iniciativas socioambientais.
 - Grupos e comunidades.
 - Organizações com identidade própria.
+- Diários de cultivo, com ciclos, registros, observações e resultados.
+- Conhecimentos práticos e práticas de faça você mesmo.
 - Ofertas e necessidades de recursos.
 - Atividades, encontros e mobilizações.
 

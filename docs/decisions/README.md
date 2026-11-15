@@ -8,16 +8,22 @@ Cada decisão documenta o contexto, a decisão adotada, as alternativas consider
 
 | ADR | Título | Status | Data |
 | --- | --- | --- | --- |
-| [0001](0001-arquitetura-propria-com-activitypub.md) | Aplicação própria integrada ao Fediverso | Aceito | 2026-11-05 |
-| [0002](0002-modelo-de-dominio-e-fronteiras-entre-os-contextos.md) | Modelo de domínio e fronteiras entre os contextos | Aceito | 2026-11-05 |
-| [0003](0003-identidade-e-autenticacao.md) | Identidade e autenticação | Aceito | 2026-11-05 |
-| [0004](0004-estrategia-de-federacao-e-processamento-assincrono.md) | Estratégia de federação e processamento assíncrono | Aceito | 2026-11-05 |
-| [0005](0005-persistencia-e-armazenamento.md) | Persistência e armazenamento | Aceito | 2026-11-05 |
-| [0006](0006-estrategia-de-implantacao-e-operacao.md) | Estratégia de implantação e operação de instâncias | Aceito | 2026-11-05 |
-| [0007](0007-stack-da-aplicacao.md) | Stack da aplicação | Aceito | 2026-11-10 |
-| [0008](0008-autenticacao-e-autorizacao.md) | Autenticação e autorização | Aceito | 2026-11-10 |
-| [0009](0009-implementacao-da-federacao.md) | Implementação da federação | Aceito | 2026-11-10 |
-| [0010](0010-empacotamento-e-implantacao.md) | Empacotamento, implantação e atualização | Aceito | 2026-11-10 |
+| [0001](0001-arquitetura-propria-com-activitypub.md) | Aplicação própria integrada ao Fediverso | Proposto | 2026-11-05 |
+| [0002](0002-modelo-de-dominio-e-fronteiras-entre-os-contextos.md) | Modelo de domínio e fronteiras entre os contextos | Proposto | 2026-11-05 |
+| [0003](0003-identidade-e-autenticacao.md) | Identidade e autenticação | Proposto | 2026-11-05 |
+| [0004](0004-estrategia-de-federacao-e-processamento-assincrono.md) | Estratégia de federação e processamento assíncrono | Proposto | 2026-11-05 |
+| [0005](0005-persistencia-e-armazenamento.md) | Persistência e armazenamento | Proposto | 2026-11-05 |
+| [0006](0006-estrategia-de-implantacao-e-operacao.md) | Estratégia de implantação e operação de instâncias | Proposto | 2026-11-05 |
+| [0007](0007-stack-da-aplicacao.md) | Stack da aplicação | Proposto | 2026-11-10 |
+| [0008](0008-autenticacao-e-autorizacao.md) | Autenticação e autorização | Proposto | 2026-11-10 |
+| [0009](0009-implementacao-da-federacao.md) | Implementação da federação | Proposto | 2026-11-10 |
+| [0010](0010-empacotamento-e-implantacao.md) | Empacotamento, implantação e atualização | Proposto | 2026-11-10 |
+| [0011](0011-diario-de-cultivo-e-biblioteca-de-praticas.md) | Diário de cultivo e biblioteca de práticas | Proposto | 2026-11-14 |
+
+Todas as decisões permanecem **abertas para revisão**. O projeto ainda não
+realizou a rodada de discussão com a comunidade e nenhum ADR deve ser
+considerado consolidado. As decisões já refletidas no código descrevem o estado
+atual da implementação, mas podem ser revistas ou substituídas.
 
 ## Status
 

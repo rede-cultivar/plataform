@@ -32,6 +32,9 @@ Entre os problemas observados estão:
 - Dificuldade de divulgar projetos e acompanhar sua evolução.
 - Poucas ferramentas integradas para organizar iniciativas coletivas.
 - Barreiras para quem deseja começar a cultivar, mas não sabe por onde começar.
+- Dificuldade para registrar e acompanhar a evolução de um cultivo ao longo do tempo.
+- Falta de mecanismos para comparar experiências por espécie, ambiente, técnica ou resultado.
+- Conhecimentos práticos dispersos em conversas, cadernos e publicações genéricas.
 - Dificuldade para conectar quem possui recursos disponíveis com quem precisa deles.
 
 Existe uma oportunidade de oferecer uma infraestrutura aberta, descentralizada e orientada à colaboração, capaz de conectar essas iniciativas sem exigir que elas abandonem seus espaços e formas próprias de organização.
@@ -162,6 +165,22 @@ Pode representar uma horta, jardim, coleção de plantas, ação de recuperaçã
 
 Representa uma comunicação ou compartilhamento de conteúdo, incluindo experiências, imagens, informações e atualizações.
 
+### Ciclo de cultivo
+
+Representa o acompanhamento de um cultivo desde o início até sua conclusão ou arquivamento, com identificação, contexto, período, responsável e resultado.
+
+Pode estar associado a uma pessoa ou a um projeto e reúne registros ao longo do tempo.
+
+### Registro de cultivo
+
+Representa um acontecimento datado dentro de um ciclo de cultivo, incluindo observações, imagens, medidas, intervenções, ocorrências e colheita.
+
+### Prática
+
+Representa um conhecimento prático reproduzível, como adubo caseiro, construção de recipientes, preparo de substrato, compostagem, controle de pragas ou conservação de sementes.
+
+Uma prática descreve materiais, etapas, riscos, adaptações e resultados esperados, com autoria e licença definidas.
+
 ### Recurso
 
 Representa uma oferta ou necessidade de recursos relacionados às iniciativas, como sementes, mudas, ferramentas, composto e outros materiais.
@@ -196,14 +215,34 @@ A plataforma deverá evoluir em torno dos seguintes domínios funcionais.
 - Feed de conteúdo.
 - Interações com participantes federados.
 
-### 8.3. Projetos
+### 8.3. Diário de cultivo
+
+- Criação e acompanhamento de ciclos de cultivo.
+- Registros cronológicos com texto, imagens, medidas e intervenções.
+- Identificação de espécies, variedades, ambiente, substrato e recipiente.
+- Registro de ocorrências, colheita e avaliação final.
+- Filtros por espécie, ambiente, técnica, estágio, problema e resultado.
+- Indicadores descritivos, como prazos observados e taxas de germinação.
+- Controle de visibilidade por ciclo e por registro.
+
+### 8.4. Conhecimento e práticas
+
+- Criação e publicação de práticas de cultivo e faça você mesmo.
+- Descrição de materiais, ferramentas, etapas, riscos e adaptações.
+- Categorização por aplicabilidade, dificuldade, tempo e custo.
+- Comentários, perguntas e relatos de uso.
+- Relação entre práticas, ciclos de cultivo e resultados observados.
+- Preservação de autoria, licença e histórico de versões.
+- Moderação e avisos de segurança.
+
+### 8.5. Projetos
 
 - Criação e apresentação de projetos.
 - Histórico de atualizações.
 - Participantes e organizações envolvidas.
 - Divulgação de resultados e experiências.
 
-### 8.4. Grupos e organizações
+### 8.6. Grupos e organizações
 
 - Criação e administração de grupos.
 - Participação e gerenciamento de membros.
@@ -211,14 +250,14 @@ A plataforma deverá evoluir em torno dos seguintes domínios funcionais.
 - Identidade institucional de organizações.
 - Associação de projetos e atividades.
 
-### 8.5. Compartilhamento de recursos
+### 8.7. Compartilhamento de recursos
 
 - Publicação de ofertas e necessidades.
 - Consulta de recursos disponíveis.
 - Manifestação de interesse.
 - Registro de trocas e doações.
 
-### 8.6. Mobilização e atividades
+### 8.8. Mobilização e atividades
 
 - Divulgação de encontros e eventos.
 - Organização de mutirões.
@@ -227,7 +266,7 @@ A plataforma deverá evoluir em torno dos seguintes domínios funcionais.
 
 A mobilização é uma dimensão transversal do produto, não um domínio isolado. Deve estar presente nas publicações, nos grupos, nos projetos e nas atividades.
 
-### 8.7. Federação
+### 8.9. Federação
 
 - Descoberta de participantes de outras instâncias.
 - Relacionamento com contas federadas.
@@ -241,11 +280,14 @@ A plataforma não pretende ser:
 
 - Um curso ou sistema de ensino agrícola.
 - Um sistema de gestão operacional de hortas ou propriedades rurais.
+- Um serviço de prescrição agronômica ou diagnóstico automatizado.
 - Um marketplace comercial de produtos agrícolas.
 - Uma rede social genérica sem foco comunitário.
 - Uma ferramenta que substitua a autonomia e a organização dos grupos existentes.
 
 O foco está em conectar pessoas, fortalecer iniciativas, compartilhar conhecimentos e recursos e facilitar a colaboração.
+
+A dimensão educativa do produto é baseada em experiências e práticas compartilhadas pela comunidade, não em um currículo formal ou em prescrição técnica profissional.
 
 Funcionalidades específicas poderão ser incorporadas no futuro, desde que estejam alinhadas à visão e aos princípios do projeto.
 
@@ -261,7 +303,7 @@ A integração deverá permitir, progressivamente:
 - Recebimento de interações.
 - Identidades federadas para pessoas e entidades coletivas.
 
-Funcionalidades específicas da plataforma, como projetos, grupos, recursos e atividades, poderão exigir representações e mecanismos próprios, pois não são integralmente padronizadas pelo ActivityPub.
+Funcionalidades específicas da plataforma, como projetos, grupos, recursos, atividades, registros de cultivo e práticas, poderão exigir representações e mecanismos próprios, pois não são integralmente padronizadas pelo ActivityPub.
 
 A interoperabilidade deverá ser construída sem comprometer o modelo de domínio e a autonomia funcional da aplicação.
 
@@ -278,7 +320,15 @@ O produto deverá evoluir de maneira incremental, priorizando funcionalidades qu
 - Relacionamentos entre participantes.
 - Primeira prova de conceito de federação.
 
-### 11.2. Colaboração
+### 11.2. Aprendizagem e registro
+
+- Diário de cultivo com ciclos e registros.
+- Filtros e indicadores descritivos sobre experiências de cultivo.
+- Biblioteca de práticas de cultivo e faça você mesmo.
+- Relação entre práticas, aplicações e resultados observados.
+- Publicação federada opcional de registros e práticas.
+
+### 11.3. Colaboração
 
 - Projetos.
 - Grupos.
@@ -286,7 +336,7 @@ O produto deverá evoluir de maneira incremental, priorizando funcionalidades qu
 - Participação em iniciativas.
 - Compartilhamento básico de recursos.
 
-### 11.3. Mobilização
+### 11.4. Mobilização
 
 - Atividades e eventos.
 - Mutirões e campanhas.
@@ -313,7 +363,15 @@ A avaliação do produto deverá combinar indicadores de utilização com indica
 - Interações entre grupos e organizações.
 - Iniciativas que surgiram a partir de conexões na plataforma.
 
-### 12.3. Impacto concreto
+### 12.3. Aprendizagem
+
+- Ciclos de cultivo registrados e concluídos.
+- Registros com resultados e aprendizados compartilhados.
+- Práticas publicadas, adaptadas e reutilizadas.
+- Relatos de uso que conectam prática, aplicação e resultado.
+- Pessoas que encontraram experiências semelhantes por meio de filtros.
+
+### 12.4. Impacto concreto
 
 - Pessoas que iniciaram atividades de cultivo.
 - Projetos comunitários iniciados ou fortalecidos.
@@ -321,7 +379,7 @@ A avaliação do produto deverá combinar indicadores de utilização com indica
 - Recursos compartilhados.
 - Iniciativas ambientais apoiadas.
 
-### 12.4. Descentralização
+### 12.5. Descentralização
 
 - Instâncias interoperáveis.
 - Participantes federados.
@@ -339,6 +397,11 @@ Algumas decisões deverão ser amadurecidas durante a evolução do projeto:
 - Quais mecanismos de descoberta geográfica serão necessários?
 - Como tratar a visibilidade de projetos, grupos e recursos?
 - Quais funcionalidades de compartilhamento de recursos devem integrar a primeira versão?
+- Qual deve ser a visibilidade padrão dos ciclos de cultivo e como equilibrar privacidade e aprendizagem coletiva?
+- Quais campos e medidas do diário devem ser padronizados sem engessar diferentes formas de cultivo?
+- Como calcular e apresentar indicadores descritivos sem emitir recomendação ou diagnóstico?
+- Como funcionará a curadoria e a edição colaborativa das práticas?
+- Qual licença deverá ser adotada para registros e práticas publicados?
 - Quais mecanismos de moderação e administração serão necessários para diferentes tipos de instância?
 - Como avaliar o impacto concreto sem criar mecanismos excessivos de coleta de dados?
 

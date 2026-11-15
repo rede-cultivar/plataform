@@ -1,6 +1,6 @@
 # ADR 0004 — Estratégia de federação e processamento assíncrono
 
-**Status:** Aceito  
+**Status:** Proposto
 **Data:** 2026-11-05
 
 ## Contexto
