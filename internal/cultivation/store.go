@@ -286,6 +286,58 @@ func (s *Store) FindEntry(ctx context.Context, id string) (*Entry, error) {
 	return entry, nil
 }
 
+// UpdateEntry atualiza os dados editáveis de um registro.
+func (s *Store) UpdateEntry(ctx context.Context, id string, input EntryInput) (*Entry, error) {
+	measurements, err := json.Marshal(input.Measurements)
+	if err != nil {
+		return nil, err
+	}
+
+	var stage *string
+	if input.Stage != nil {
+		value := string(*input.Stage)
+		stage = &value
+	}
+
+	var practiceID any
+	if input.PracticeID != "" {
+		practiceID = input.PracticeID
+	}
+
+	_, err = s.db.Exec(ctx, `
+		UPDATE cultivation_entries
+		SET occurred_at = $2,
+		    body = $3,
+		    stage = $4,
+		    measurements = $5::jsonb,
+		    interventions = $6,
+		    occurrences = $7,
+		    harvest_quantity = $8,
+		    harvest_unit = $9,
+		    practice_id = $10::uuid,
+		    visibility = $11,
+		    updated_at = now()
+		WHERE id::text = $1
+	`,
+		id,
+		input.OccurredAt,
+		input.Body,
+		stage,
+		string(measurements),
+		input.Interventions,
+		input.Occurrences,
+		input.HarvestQuantity,
+		input.HarvestUnit,
+		practiceID,
+		input.Visibility,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.FindEntry(ctx, id)
+}
+
 // ListEntries lista os registros de um ciclo em ordem cronológica inversa.
 func (s *Store) ListEntries(ctx context.Context, cycleID string) ([]Entry, error) {
 	rows, err := s.db.Query(ctx, `

@@ -72,6 +72,8 @@ func isPublicPath(path string) bool {
 		strings.HasPrefix(path, "/.well-known/") ||
 		strings.HasPrefix(path, "/nodeinfo/") ||
 		strings.HasPrefix(path, "/actors/") ||
+		strings.HasPrefix(path, "/notas/") ||
+		strings.HasPrefix(path, "/activities/") ||
 		path == "/healthz" ||
 		path == "/readyz"
 }

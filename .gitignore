@@ -1,5 +1,6 @@
 # Binários e artefatos de build
 /bin/
+/tmp/
 /coverage.out
 *.test
 

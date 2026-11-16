@@ -13,22 +13,30 @@ const (
 	securityContext        = "https://w3id.org/security/v1"
 )
 
+// PublicKey representa a chave pública usada para validar assinaturas HTTP.
+type PublicKey struct {
+	ID           string `json:"id"`
+	Owner        string `json:"owner"`
+	PublicKeyPEM string `json:"publicKeyPem"`
+}
+
 // PersonActor representa uma pessoa como Actor ActivityPub.
 type PersonActor struct {
-	Context                   []string `json:"@context"`
-	ID                        string   `json:"id"`
-	Type                      string   `json:"type"`
-	PreferredUsername         string   `json:"preferredUsername"`
-	Name                      string   `json:"name,omitempty"`
-	Summary                   string   `json:"summary,omitempty"`
-	URL                       string   `json:"url"`
-	Inbox                     string   `json:"inbox"`
-	Outbox                    string   `json:"outbox"`
-	Followers                 string   `json:"followers"`
-	Following                 string   `json:"following"`
-	ManuallyApprovesFollowers bool     `json:"manuallyApprovesFollowers"`
-	Discoverable              bool     `json:"discoverable"`
-	Published                 string   `json:"published"`
+	Context                   []string   `json:"@context"`
+	ID                        string     `json:"id"`
+	Type                      string     `json:"type"`
+	PreferredUsername         string     `json:"preferredUsername"`
+	Name                      string     `json:"name,omitempty"`
+	Summary                   string     `json:"summary,omitempty"`
+	URL                       string     `json:"url"`
+	Inbox                     string     `json:"inbox"`
+	Outbox                    string     `json:"outbox"`
+	Followers                 string     `json:"followers"`
+	Following                 string     `json:"following"`
+	ManuallyApprovesFollowers bool       `json:"manuallyApprovesFollowers"`
+	Discoverable              bool       `json:"discoverable"`
+	Published                 string     `json:"published"`
+	PublicKey                 *PublicKey `json:"publicKey,omitempty"`
 }
 
 // NewPersonActor traduz uma pessoa do domínio para um documento Actor.
@@ -51,11 +59,7 @@ func NewPersonActor(urls URLs, person identity.Person) PersonActor {
 	}
 }
 
-// OrderedCollection representa uma coleção ActivityPub vazia.
-//
-// As coleções de outbox, seguidores e seguidos são publicadas como
-// placeholders até que as publicações e os relacionamentos sejam
-// implementados.
+// OrderedCollection representa uma coleção ordenada do ActivityPub.
 type OrderedCollection struct {
 	Context      string `json:"@context"`
 	ID           string `json:"id"`

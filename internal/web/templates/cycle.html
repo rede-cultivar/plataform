@@ -92,6 +92,12 @@
             <p><strong>Prática utilizada:</strong> <a href="/praticas/{{.PracticeID}}">{{.PracticeTitle}}</a></p>
           {{end}}
 
+          {{if $.CanEdit}}
+            <p class="actions compact">
+              <a class="button button-secondary" href="/diario/{{$.Cycle.ID}}/registros/{{.ID}}/editar">Editar registro</a>
+            </p>
+          {{end}}
+
           <p class="muted">Registrado por @{{.AuthorHandle}} em {{.CreatedAt.Format "02/01/2006 15:04"}}.</p>
         </li>
       {{end}}

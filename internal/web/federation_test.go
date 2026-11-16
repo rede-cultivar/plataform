@@ -1,7 +1,10 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,11 +12,75 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rede-cultivar/plataform/internal/cultivation"
 	"github.com/rede-cultivar/plataform/internal/federation"
 	"github.com/rede-cultivar/plataform/internal/identity"
+	"github.com/rede-cultivar/plataform/internal/media"
+	"github.com/rede-cultivar/plataform/internal/platform/config"
 )
 
-func newFederationTestRouter(t *testing.T) (http.Handler, *fakeIdentity) {
+// fakeFederation implementa FederationService em memória para os testes HTTP.
+type fakeFederation struct {
+	base       string
+	key        *federation.KeyPair
+	outbox     federation.OrderedCollection
+	followers  federation.OrderedCollection
+	activities map[string]json.RawMessage
+	inboxErr   error
+	inboxCalls int
+}
+
+func newFakeFederation(t *testing.T) *fakeFederation {
+	t.Helper()
+
+	key, err := federation.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("generate test key: %v", err)
+	}
+
+	return &fakeFederation{
+		base:       "http://localhost:8080",
+		key:        key,
+		activities: make(map[string]json.RawMessage),
+	}
+}
+
+func (f *fakeFederation) ActorKey(_ context.Context, _ string) (*federation.KeyPair, error) {
+	return f.key, nil
+}
+
+func (f *fakeFederation) PublishEntry(_ context.Context, _ identity.Person, _ cultivation.Cycle, _ cultivation.Entry, _ []media.Asset) error {
+	return nil
+}
+
+func (f *fakeFederation) Outbox(_ context.Context, personID string) (federation.OrderedCollection, error) {
+	if f.outbox.ID != "" {
+		return f.outbox, nil
+	}
+	return federation.NewOrderedCollection(federation.NewURLs(f.base).Outbox(personID)), nil
+}
+
+func (f *fakeFederation) Followers(_ context.Context, personID string) (federation.OrderedCollection, error) {
+	if f.followers.ID != "" {
+		return f.followers, nil
+	}
+	return federation.NewOrderedCollection(federation.NewURLs(f.base).Followers(personID)), nil
+}
+
+func (f *fakeFederation) HandleInbox(_ context.Context, _ string, _ *http.Request) error {
+	f.inboxCalls++
+	return f.inboxErr
+}
+
+func (f *fakeFederation) FindActivity(_ context.Context, activityID string) (json.RawMessage, error) {
+	payload, ok := f.activities[activityID]
+	if !ok {
+		return nil, federation.ErrNotFound
+	}
+	return payload, nil
+}
+
+func newFederationTestRouterWithService(t *testing.T) (http.Handler, *fakeIdentity, *fakeFederation) {
 	t.Helper()
 
 	fake := newFakeIdentity()
@@ -26,7 +93,15 @@ func newFederationTestRouter(t *testing.T) (http.Handler, *fakeIdentity) {
 	}
 	fake.people["ana"] = &person
 
-	return newAuthTestRouter(t, fake), fake
+	service := newFakeFederation(t)
+	return newAuthTestRouter(t, fake, service), fake, service
+}
+
+func newFederationTestRouter(t *testing.T) (http.Handler, *fakeIdentity) {
+	t.Helper()
+
+	router, fake, _ := newFederationTestRouterWithService(t)
+	return router, fake
 }
 
 func decodeJSON(t *testing.T, response *httptest.ResponseRecorder, target any) {
@@ -144,6 +219,18 @@ func TestActorPublishesPerson(t *testing.T) {
 	if actor.Published != "2026-11-05T12:00:00Z" {
 		t.Errorf("Published = %q", actor.Published)
 	}
+	if actor.PublicKey == nil {
+		t.Fatal("PublicKey = nil, want actor key")
+	}
+	if actor.PublicKey.ID != "http://localhost:8080/actors/person-1#main-key" {
+		t.Errorf("PublicKey.ID = %q", actor.PublicKey.ID)
+	}
+	if actor.PublicKey.Owner != actor.ID {
+		t.Errorf("PublicKey.Owner = %q, want %q", actor.PublicKey.Owner, actor.ID)
+	}
+	if !strings.Contains(actor.PublicKey.PublicKeyPEM, "BEGIN PUBLIC KEY") {
+		t.Errorf("PublicKey.PublicKeyPEM = %q, want PEM", actor.PublicKey.PublicKeyPEM)
+	}
 }
 
 func TestActorNotFound(t *testing.T) {
@@ -186,15 +273,176 @@ func TestActorCollectionsAreEmpty(t *testing.T) {
 	}
 }
 
-func TestInboxReturnsNotImplemented(t *testing.T) {
-	router, _ := newFederationTestRouter(t)
+func TestInboxDelegatesToFederation(t *testing.T) {
+	router, _, service := newFederationTestRouterWithService(t)
 
 	request := httptest.NewRequest(http.MethodPost, "/actors/person-1/inbox", strings.NewReader(`{}`))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, request)
 
-	if response.Code != http.StatusNotImplemented {
-		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotImplemented)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusAccepted, response.Body.String())
+	}
+	if service.inboxCalls != 1 {
+		t.Errorf("inbox calls = %d, want 1", service.inboxCalls)
+	}
+}
+
+func TestInboxRejectsInvalidSignature(t *testing.T) {
+	router, _, service := newFederationTestRouterWithService(t)
+	service.inboxErr = federation.ErrInvalidSignature
+
+	request := httptest.NewRequest(http.MethodPost, "/actors/person-1/inbox", strings.NewReader(`{}`))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestInboxRequiresFederationService(t *testing.T) {
+	fake := newFakeIdentity()
+	fake.people["ana"] = &identity.Person{ID: "person-1", Handle: "ana"}
+	router := newAuthTestRouter(t, fake)
+
+	request := httptest.NewRequest(http.MethodPost, "/actors/person-1/inbox", strings.NewReader(`{}`))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func newFederationContentRouter(
+	t *testing.T,
+	identityService IdentityService,
+	cultivationService CultivationService,
+	mediaService MediaService,
+	federationService FederationService,
+) http.Handler {
+	t.Helper()
+
+	return NewRouter(Deps{
+		Config: &config.Config{
+			Env:                    config.EnvDevelopment,
+			InstanceName:           "Cultivar Test",
+			LocalDomain:            "localhost:8080",
+			LogLevel:               "error",
+			SessionIdleTimeout:     time.Hour,
+			SessionAbsoluteTimeout: 24 * time.Hour,
+		},
+		Identity:    identityService,
+		Cultivation: cultivationService,
+		Media:       mediaService,
+		Federation:  federationService,
+		Logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+}
+
+func TestNotePublishesPublicEntry(t *testing.T) {
+	identityService := newFakeIdentity()
+	identityService.people["ana"] = &identity.Person{
+		ID:          "person-1",
+		Handle:      "ana",
+		DisplayName: "Ana Silva",
+		CreatedAt:   time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC),
+	}
+
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:         "entry-1",
+		CycleID:    "cycle-1",
+		AuthorID:   "person-1",
+		OccurredAt: time.Date(2026, 9, 10, 9, 30, 0, 0, time.UTC),
+		Body:       "Primeira flor observada.",
+		Visibility: cultivation.EntryVisibilityInherit,
+		CreatedAt:  time.Date(2026, 9, 10, 9, 30, 0, 0, time.UTC),
+	}}
+
+	mediaService := newFakeMedia()
+	mediaService.assets["asset-1"] = &media.Asset{
+		ID:          "asset-1",
+		OwnerID:     "person-1",
+		ContentType: "image/png",
+		Width:       1,
+		Height:      1,
+		Status:      media.StatusReady,
+	}
+	mediaService.attachments["entry-1"] = []string{"asset-1"}
+
+	router := newFederationContentRouter(t, identityService, cultivationService, mediaService, newFakeFederation(t))
+
+	request := httptest.NewRequest(http.MethodGet, "/notas/entry-1", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/activity+json") {
+		t.Errorf("Content-Type = %q, want application/activity+json", contentType)
+	}
+
+	var note federation.Note
+	decodeJSON(t, response, &note)
+
+	if note.ID != "http://localhost:8080/notas/entry-1" {
+		t.Errorf("ID = %q", note.ID)
+	}
+	if note.AttributedTo != "http://localhost:8080/actors/person-1" {
+		t.Errorf("AttributedTo = %q", note.AttributedTo)
+	}
+	if !strings.Contains(note.Content, "Primeira flor observada.") {
+		t.Errorf("Content = %q", note.Content)
+	}
+	if len(note.Attachment) != 1 {
+		t.Fatalf("Attachment = %v, want one image", note.Attachment)
+	}
+	if note.Attachment[0].URL != "http://localhost:8080/media/asset-1" {
+		t.Errorf("Attachment URL = %q", note.Attachment[0].URL)
+	}
+}
+
+func TestNoteHidesPrivateEntry(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPrivate)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:         "entry-1",
+		CycleID:    "cycle-1",
+		AuthorID:   "person-1",
+		OccurredAt: time.Date(2026, 9, 10, 9, 30, 0, 0, time.UTC),
+		Body:       "Registro privado.",
+		Visibility: cultivation.EntryVisibilityInherit,
+	}}
+
+	router := newFederationContentRouter(t, identityService, cultivationService, newFakeMedia(), newFakeFederation(t))
+
+	request := httptest.NewRequest(http.MethodGet, "/notas/entry-1", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+}
+
+func TestActivityServesStoredPayload(t *testing.T) {
+	router, _, service := newFederationTestRouterWithService(t)
+	service.activities["http://localhost:8080/activities/abc"] = json.RawMessage(`{"id":"http://localhost:8080/activities/abc","type":"Create"}`)
+
+	request := httptest.NewRequest(http.MethodGet, "/activities/abc", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if body := response.Body.String(); !strings.Contains(body, `"type":"Create"`) {
+		t.Errorf("body = %s, want stored activity", body)
 	}
 }
 

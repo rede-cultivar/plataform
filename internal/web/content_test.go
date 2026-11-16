@@ -113,6 +113,18 @@ func (f *fakeCultivation) FindCycle(_ context.Context, viewerID, cycleID string)
 	return cycle, visible, nil
 }
 
+func (f *fakeCultivation) FindEntry(_ context.Context, entryID string) (*cultivation.Entry, error) {
+	for _, entries := range f.entries {
+		for _, entry := range entries {
+			if entry.ID == entryID {
+				found := entry
+				return &found, nil
+			}
+		}
+	}
+	return nil, cultivation.ErrNotFound
+}
+
 func (f *fakeCultivation) ListPersonCycles(_ context.Context, personID string) ([]cultivation.Cycle, error) {
 	result := make([]cultivation.Cycle, 0)
 	for _, cycle := range f.cycles {
@@ -171,6 +183,39 @@ func (f *fakeCultivation) CreateEntry(_ context.Context, personID, cycleID strin
 	f.entries[cycleID] = append(f.entries[cycleID], entry)
 	cycle.EntryCount = len(f.entries[cycleID])
 	return &entry, nil
+}
+
+func (f *fakeCultivation) UpdateEntry(_ context.Context, personID, cycleID, entryID string, input cultivation.EntryInput) (*cultivation.Entry, error) {
+	if f.entryErr != nil {
+		return nil, f.entryErr
+	}
+
+	cycle, ok := f.cycles[cycleID]
+	if !ok {
+		return nil, cultivation.ErrNotFound
+	}
+	if !cycle.IsOwner(personID) {
+		return nil, cultivation.ErrForbidden
+	}
+
+	for i := range f.entries[cycleID] {
+		if f.entries[cycleID][i].ID != entryID {
+			continue
+		}
+		f.entries[cycleID][i].OccurredAt = input.OccurredAt
+		f.entries[cycleID][i].Body = input.Body
+		f.entries[cycleID][i].Stage = input.Stage
+		f.entries[cycleID][i].Measurements = input.Measurements
+		f.entries[cycleID][i].Interventions = input.Interventions
+		f.entries[cycleID][i].Occurrences = input.Occurrences
+		f.entries[cycleID][i].HarvestQuantity = input.HarvestQuantity
+		f.entries[cycleID][i].HarvestUnit = input.HarvestUnit
+		f.entries[cycleID][i].PracticeID = input.PracticeID
+		f.entries[cycleID][i].Visibility = input.Visibility
+		f.entries[cycleID][i].UpdatedAt = time.Now()
+		return &f.entries[cycleID][i], nil
+	}
+	return nil, cultivation.ErrNotFound
 }
 
 // fakePractice implementa PracticeService em memória para os testes HTTP.
@@ -929,6 +974,69 @@ func TestEntryFormRendersAllFields(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("entry form does not contain %q", want)
 		}
+	}
+}
+
+func TestEntryEditFormAndUpdate(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cycle := sampleCycle("cycle-1", cultivation.VisibilityPrivate)
+	cultivationService.cycles["cycle-1"] = cycle
+	quantity := 1.25
+	stage := cultivation.StageVegetative
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:              "entry-1",
+		CycleID:         "cycle-1",
+		AuthorID:        "person-1",
+		AuthorHandle:    "ana",
+		OccurredAt:      time.Now(),
+		Body:            "Registro inicial.",
+		Stage:           &stage,
+		Measurements:    map[string]string{"altura_cm": "20"},
+		Interventions:   []string{"rega"},
+		Occurrences:     []string{"solo seco"},
+		HarvestQuantity: &quantity,
+		HarvestUnit:     "kg",
+		Visibility:      cultivation.EntryVisibilityInherit,
+		CreatedAt:       time.Now(),
+	}}
+
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice())
+	session := loginAsAna(t, router, identityService)
+
+	formPage := getPage(router, "/diario/cycle-1/registros/entry-1/editar", session)
+	if formPage.Code != http.StatusOK {
+		t.Fatalf("GET status = %d, want %d; body = %s", formPage.Code, http.StatusOK, formPage.Body.String())
+	}
+	if body := formPage.Body.String(); !strings.Contains(body, `action="/diario/cycle-1/registros/entry-1/editar"`) {
+		t.Error("edit form does not point to the entry")
+	}
+	csrf := responseCSRFCookie(formPage)
+	if csrf == nil {
+		t.Fatal("edit form did not set the CSRF cookie")
+	}
+
+	response := postForm(router, "/diario/cycle-1/registros/entry-1/editar", url.Values{
+		"csrf_token":       {csrf.Value},
+		"occurred_at":      {time.Now().Add(1 * time.Hour).Format("2006-01-02T15:04")},
+		"body":             {"Registro atualizado."},
+		"stage":            {"flowering"},
+		"measurements":     {"altura_cm=30\nfolhas=8"},
+		"interventions":    {"rega, poda"},
+		"occurrences":      {"sem ocorrência"},
+		"harvest_quantity": {"2"},
+		"harvest_unit":     {"kg"},
+		"visibility":       {"public"},
+	}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if got := cultivationService.entries["cycle-1"][0].Body; got != "Registro atualizado." {
+		t.Errorf("body = %q, want Registro atualizado.", got)
+	}
+	if got := cultivationService.entries["cycle-1"][0].Visibility; got != cultivation.EntryVisibilityPublic {
+		t.Errorf("visibility = %q, want public", got)
 	}
 }
 

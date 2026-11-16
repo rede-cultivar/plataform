@@ -73,7 +73,7 @@ Construir a primeira versão funcional da plataforma, priorizando identidade, pu
 
 ### Situação atual
 
-Contas locais com e-mail e senha, sessões no servidor, proteção CSRF, perfis públicos editáveis e a primeira camada de identidade federada (WebFinger, Actor e NodeInfo) já estão implementados. As próximas entregas são publicações, relacionamentos e a entrega federada de atividades.
+Contas locais com e-mail e senha, sessões no servidor, proteção CSRF, perfis públicos editáveis e a primeira camada de identidade federada (WebFinger, Actor, NodeInfo, assinaturas HTTP, entrega assíncrona e inbox) já estão implementados. As próximas entregas são o relacionamento entre participantes, o feed de publicações e a validação contínua com instâncias reais.
 
 ### Objetivos
 
@@ -105,7 +105,7 @@ Contas locais com e-mail e senha, sessões no servidor, proteção CSRF, perfis 
 
 #### Federação
 
-- Identidade federada para participantes. *(WebFinger, Actor e NodeInfo implementados; entrega de atividades pendente.)*
+- Identidade federada para participantes. *(WebFinger, Actor, NodeInfo, assinaturas HTTP, entrega e inbox implementados; descoberta e acompanhamento de contas externas pendentes.)*
 - Descoberta de contas externas.
 - Seguir participantes de outras instâncias.
 - Distribuir publicações para instâncias compatíveis.
@@ -171,7 +171,7 @@ Introduzir a dimensão educativa do produto, permitindo registrar experiências 
 
 #### Federação
 
-- Publicar registros e práticas públicas no outbox do Actor responsável.
+- Publicar registros e práticas públicas no outbox do Actor responsável. *(Registros públicos já são publicados como `Note`; práticas e atualizações pendentes.)*
 - Representar registros como `Note` ou `Article` e práticas como `Article`.
 - Receber comentários e reações de outras instâncias.
 - Manter campos estruturados como extensões opcionais para consumidores externos.

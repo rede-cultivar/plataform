@@ -384,13 +384,217 @@ func (s *server) entryCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	attached := make([]media.Asset, 0, len(uploaded))
 	for position, asset := range uploaded {
 		if err := s.media.AttachToEntry(r.Context(), entry.ID, asset.ID, position); err != nil {
 			s.logger.Error("attach entry photo", "entry", entry.ID, "media", asset.ID, "error", err)
+			continue
+		}
+		attached = append(attached, *asset)
+	}
+
+	if s.federation != nil && entry.EffectiveVisibility(cycle) == cultivation.VisibilityPublic {
+		if err := s.federation.PublishEntry(r.Context(), account.Person, *cycle, *entry, attached); err != nil {
+			s.logger.Warn("publish cultivation entry", "entry", entry.ID, "error", err)
 		}
 	}
 
 	http.Redirect(w, r, "/diario/"+cycleID+"#registro-"+entry.ID, http.StatusSeeOther)
+}
+
+func (s *server) entryEditForm(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+
+	cycleID := chi.URLParam(r, "cycleID")
+	cycle, _, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, cycleID)
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find cycle for entry edit", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !cycle.IsOwner(account.Person.ID) {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+
+	entryID := chi.URLParam(r, "entryID")
+	entry, err := s.cultivation.FindEntry(r.Context(), entryID)
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "registro não encontrado", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find entry for edit", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if entry.CycleID != cycle.ID {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+
+	s.renderEntryEdit(w, r, http.StatusOK, "", cycle, *entry)
+}
+
+func (s *server) entryEdit(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.cultivation == nil {
+		http.Error(w, "diário indisponível", http.StatusServiceUnavailable)
+		return
+	}
+	if !s.parseMultipartForm(w, r, maxEntryUploadBytes) {
+		return
+	}
+	if !s.validateCSRF(r) {
+		cycleID := chi.URLParam(r, "cycleID")
+		cycle, _, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, cycleID)
+		if err == nil {
+			entry, _ := s.cultivation.FindEntry(r.Context(), chi.URLParam(r, "entryID"))
+			if entry != nil {
+				s.renderEntryEdit(w, r, http.StatusForbidden, "Sessão do formulário expirada. Tente novamente.", cycle, *entry)
+				return
+			}
+		}
+		http.Error(w, "sessão expirada", http.StatusForbidden)
+		return
+	}
+
+	cycleID := chi.URLParam(r, "cycleID")
+	entryID := chi.URLParam(r, "entryID")
+	cycle, _, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, cycleID)
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find cycle for entry update", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !cycle.IsOwner(account.Person.ID) {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+
+	entry, err := s.cultivation.FindEntry(r.Context(), entryID)
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "registro não encontrado", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find entry for update", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if entry.CycleID != cycle.ID {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+
+	input, form, err := entryInputFromForm(r)
+	if err != nil {
+		s.renderEntryEdit(w, r, http.StatusBadRequest, "Informe uma data e uma quantidade válidas.", cycle, *entry)
+		return
+	}
+
+	updated, err := s.cultivation.UpdateEntry(r.Context(), account.Person.ID, cycleID, entryID, input)
+	if err != nil {
+		if message, ok := validationMessage(err); ok {
+			s.renderEntryEdit(w, r, http.StatusBadRequest, message, cycle, form)
+			return
+		}
+		s.logger.Error("update entry", "error", err)
+		s.renderEntryEdit(w, r, http.StatusInternalServerError, "Não foi possível salvar as alterações. Tente novamente.", cycle, form)
+		return
+	}
+
+	if s.media != nil {
+		currentIDs := make(map[string]struct{})
+		deletedCount := 0
+		if existing, err := s.media.ListByEntryIDs(r.Context(), []string{entryID}); err == nil {
+			for _, assets := range existing {
+				for _, asset := range assets {
+					currentIDs[asset.ID] = struct{}{}
+				}
+			}
+		} else {
+			s.logger.Warn("load entry media before delete", "entry", entryID, "error", err)
+		}
+
+		for _, deleteID := range r.Form["delete_photo"] {
+			if deleteID == "" {
+				continue
+			}
+			if _, ok := currentIDs[deleteID]; !ok {
+				continue
+			}
+			deletedCount++
+			if err := s.media.Delete(r.Context(), account.Person.ID, deleteID); err != nil {
+				s.logger.Warn("delete entry photo", "entry", entryID, "media", deleteID, "error", err)
+			}
+		}
+
+		files := photoFiles(r)
+		if len(currentIDs)-deletedCount+len(files) > media.MaxPhotosPerEntry {
+			s.renderEntryEdit(w, r, http.StatusBadRequest, "Envie no máximo 4 fotos por registro.", cycle, *updated)
+			return
+		}
+		if len(files) > 0 {
+			uploaded := make([]*media.Asset, 0, len(files))
+			cleanup := func() {
+				for _, asset := range uploaded {
+					if err := s.media.Delete(r.Context(), account.Person.ID, asset.ID); err != nil {
+						s.logger.Warn("cleanup updated entry photo", "media", asset.ID, "error", err)
+					}
+				}
+			}
+			for _, header := range files {
+				file, err := header.Open()
+				if err != nil {
+					cleanup()
+					s.renderEntryEdit(w, r, http.StatusBadRequest, "Não foi possível ler a imagem enviada.", cycle, *updated)
+					return
+				}
+				asset, uploadErr := s.media.Upload(r.Context(), account.Person.ID, header.Filename, file)
+				file.Close()
+				if uploadErr != nil {
+					cleanup()
+					if message, ok := mediaMessage(uploadErr); ok {
+						s.renderEntryEdit(w, r, http.StatusBadRequest, message, cycle, *updated)
+						return
+					}
+					s.logger.Error("upload updated entry photo", "error", uploadErr)
+					s.renderEntryEdit(w, r, http.StatusInternalServerError, "Não foi possível salvar a foto. Tente novamente.", cycle, *updated)
+					return
+				}
+				uploaded = append(uploaded, asset)
+			}
+
+			for position, asset := range uploaded {
+				if err := s.media.AttachToEntry(r.Context(), entryID, asset.ID, position); err != nil {
+					s.logger.Error("attach updated entry photo", "entry", entryID, "media", asset.ID, "error", err)
+				}
+			}
+		}
+	}
+
+	http.Redirect(w, r, "/diario/"+cycleID+"#registro-"+updated.ID, http.StatusSeeOther)
 }
 
 func (s *server) renderCycleNew(w http.ResponseWriter, r *http.Request, status int, message string, form cultivation.Cycle) {
@@ -433,6 +637,26 @@ func (s *server) renderEntryNew(w http.ResponseWriter, r *http.Request, status i
 	data.OccurrencesText = listText(form.Occurrences)
 	data.Practices = s.publicPractices(r)
 	s.render(w, status, "entry_new.html", data)
+}
+
+func (s *server) renderEntryEdit(w http.ResponseWriter, r *http.Request, status int, message string, cycle *cultivation.Cycle, form cultivation.Entry) {
+	data := s.newPage(w, r)
+	data.Error = message
+	data.Cycle = cycle
+	data.FormEntry = form
+	data.MeasurementsText = measurementsText(form.Measurements)
+	data.InterventionsText = listText(form.Interventions)
+	data.OccurrencesText = listText(form.Occurrences)
+	data.Practices = s.publicPractices(r)
+	if s.media != nil {
+		mediaByEntry, err := s.media.ListByEntryIDs(r.Context(), []string{form.ID})
+		if err != nil {
+			s.logger.Warn("list entry media for edit form", "entry", form.ID, "error", err)
+		} else {
+			data.EntryMedia = mediaByEntry
+		}
+	}
+	s.render(w, status, "entry_edit.html", data)
 }
 
 func (s *server) publicPractices(r *http.Request) []practices.Practice {
