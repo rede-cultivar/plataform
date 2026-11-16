@@ -1,34 +1,34 @@
 name: cultivar
 
 x-app-env: &app-env
-  CULTIVAR_ENV: development
-  CULTIVAR_HTTP_ADDR: ":8080"
-  CULTIVAR_LOCAL_DOMAIN: "localhost:8080"
-  CULTIVAR_INSTANCE_NAME: "Cultivar (dev)"
-  CULTIVAR_LOG_LEVEL: "debug"
-  CULTIVAR_DATABASE_URL: "postgres://cultivar:cultivar@postgres:5432/cultivar?sslmode=disable"
-  CULTIVAR_SECRET_KEY: "dev-only-secret-key-change-me-000000"
-  CULTIVAR_SHUTDOWN_TIMEOUT: "15s"
-  CULTIVAR_WORKER_POLL_INTERVAL: "5s"
-  CULTIVAR_SESSION_IDLE_TIMEOUT: "12h"
-  CULTIVAR_SESSION_ABSOLUTE_TIMEOUT: "720h"
-  CULTIVAR_COOKIE_SECURE: "false"
-  CULTIVAR_S3_ENDPOINT: "s3mock:9090"
-  CULTIVAR_S3_REGION: "us-east-1"
-  CULTIVAR_S3_BUCKET: "cultivar"
-  CULTIVAR_S3_ACCESS_KEY: "cultivar"
-  CULTIVAR_S3_SECRET_KEY: "cultivar123"
-  CULTIVAR_S3_USE_SSL: "false"
+  CULTIVAR_ENV: ${CULTIVAR_ENV:-development}
+  CULTIVAR_HTTP_ADDR: ${CULTIVAR_HTTP_ADDR:-:8080}
+  CULTIVAR_LOCAL_DOMAIN: ${CULTIVAR_LOCAL_DOMAIN:-localhost:8080}
+  CULTIVAR_INSTANCE_NAME: ${CULTIVAR_INSTANCE_NAME:-Cultivar (dev)}
+  CULTIVAR_LOG_LEVEL: ${CULTIVAR_LOG_LEVEL:-debug}
+  CULTIVAR_DATABASE_URL: ${CULTIVAR_DOCKER_DATABASE_URL:-postgres://cultivar:cultivar@postgres:5432/cultivar?sslmode=disable}
+  CULTIVAR_SECRET_KEY: ${CULTIVAR_SECRET_KEY:?Configure CULTIVAR_SECRET_KEY in .env}
+  CULTIVAR_SHUTDOWN_TIMEOUT: ${CULTIVAR_SHUTDOWN_TIMEOUT:-15s}
+  CULTIVAR_WORKER_POLL_INTERVAL: ${CULTIVAR_WORKER_POLL_INTERVAL:-5s}
+  CULTIVAR_SESSION_IDLE_TIMEOUT: ${CULTIVAR_SESSION_IDLE_TIMEOUT:-12h}
+  CULTIVAR_SESSION_ABSOLUTE_TIMEOUT: ${CULTIVAR_SESSION_ABSOLUTE_TIMEOUT:-720h}
+  CULTIVAR_COOKIE_SECURE: ${CULTIVAR_COOKIE_SECURE:-false}
+  CULTIVAR_S3_ENDPOINT: ${CULTIVAR_DOCKER_S3_ENDPOINT:-s3mock:9090}
+  CULTIVAR_S3_REGION: ${CULTIVAR_S3_REGION:-us-east-1}
+  CULTIVAR_S3_BUCKET: ${CULTIVAR_S3_BUCKET:-cultivar}
+  CULTIVAR_S3_ACCESS_KEY: ${CULTIVAR_S3_ACCESS_KEY:-cultivar}
+  CULTIVAR_S3_SECRET_KEY: ${CULTIVAR_S3_SECRET_KEY:-cultivar123}
+  CULTIVAR_S3_USE_SSL: ${CULTIVAR_S3_USE_SSL:-false}
 
 services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: cultivar
-      POSTGRES_PASSWORD: cultivar
-      POSTGRES_DB: cultivar
+      POSTGRES_USER: ${POSTGRES_USER:-cultivar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cultivar}
+      POSTGRES_DB: ${POSTGRES_DB:-cultivar}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -44,7 +44,7 @@ services:
       COM_ADOBE_TESTING_S3MOCK_STORE_REGION: us-east-1
       SPRING_PROFILES_ACTIVE: actuator
     ports:
-      - "9000:9090"
+      - "127.0.0.1:${S3MOCK_PORT:-9000}:9090"
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/favicon.ico"]
       interval: 5s
@@ -67,7 +67,7 @@ services:
     command: ["serve"]
     environment: *app-env
     ports:
-      - "8080:8080"
+      - "127.0.0.1:${CULTIVAR_HTTP_PORT:-8080}:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully

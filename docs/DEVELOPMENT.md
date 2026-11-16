@@ -18,6 +18,18 @@ make migrate   # aplica as migrações
 make run       # inicia o servidor em http://localhost:8080
 ```
 
+O Docker Compose também carrega automaticamente as variáveis de `.env`. Para
+usar um domínio público, ajuste `CULTIVAR_LOCAL_DOMAIN` (por exemplo,
+`https://delorme.dev.br`) e mantenha `CULTIVAR_SECRET_KEY` fora do controle de
+versão. O Compose usa `CULTIVAR_DOCKER_DATABASE_URL` e
+`CULTIVAR_DOCKER_S3_ENDPOINT` para acessar os serviços pelos nomes internos
+`postgres` e `s3mock`; `CULTIVAR_DATABASE_URL` e `CULTIVAR_S3_ENDPOINT` continuam
+servindo à execução local pelo `make`.
+
+As portas publicadas do app, PostgreSQL e S3Mock ficam vinculadas a `127.0.0.1`
+por padrão. O Nginx no mesmo host pode encaminhar para `localhost:8080`, sem
+expor diretamente o banco ou o S3Mock à internet.
+
 Em outro terminal, para iniciar o trabalhador assíncrono:
 
 ```sh
