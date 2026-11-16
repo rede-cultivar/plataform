@@ -245,6 +245,7 @@ func TestEntryEditCanDeleteAndAddPhotos(t *testing.T) {
 		CreatedAt:    time.Now(),
 	}}
 	mediaService := newFakeMedia()
+	mediaService.nextID = 1
 	mediaService.assets["asset-1"] = &media.Asset{ID: "asset-1", OwnerID: "person-1", OriginalName: "antiga.png", ContentType: "image/png", Width: 1, Height: 1, Status: media.StatusReady}
 	mediaService.data["asset-1"] = testPNG(t)
 	mediaService.attachments["entry-1"] = []string{"asset-1"}
@@ -254,10 +255,10 @@ func TestEntryEditCanDeleteAndAddPhotos(t *testing.T) {
 	csrf := csrfFor(t, router, "/diario/cycle-1/registros/entry-1/editar", session)
 
 	response := postMultipart(router, "/diario/cycle-1/registros/entry-1/editar", map[string]string{
-		"csrf_token":  csrf.Value,
-		"occurred_at": "2026-09-10T09:30",
-		"body":        "Registro atualizado.",
-		"visibility":  "public",
+		"csrf_token":   csrf.Value,
+		"occurred_at":  "2026-09-10T09:30",
+		"body":         "Registro atualizado.",
+		"visibility":   "public",
 		"delete_photo": "asset-1",
 	}, []uploadFile{{Name: "nova.png", Data: testPNG(t)}}, session, csrf)
 

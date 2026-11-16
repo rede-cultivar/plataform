@@ -42,6 +42,16 @@ type SignatureParams struct {
 	Signature string
 }
 
+// Signed informa se o cabeçalho faz parte da lista assinada.
+func (p *SignatureParams) Signed(header string) bool {
+	for _, value := range p.Headers {
+		if strings.EqualFold(value, header) {
+			return true
+		}
+	}
+	return false
+}
+
 // ParseSignatureHeader interpreta um cabeçalho Signature no formato
 // keyId="...",algorithm="...",headers="...",signature="...".
 func ParseSignatureHeader(value string) (*SignatureParams, error) {
@@ -58,7 +68,7 @@ func ParseSignatureHeader(value string) (*SignatureParams, error) {
 		if !ok {
 			return nil, fmt.Errorf("%w: campo sem valor", ErrInvalidSignature)
 		}
-	fields = append(fields, strings.TrimSpace(key))
+		fields = append(fields, strings.TrimSpace(key))
 
 		raw = strings.Trim(strings.TrimSpace(raw), `"`)
 		switch strings.ToLower(strings.TrimSpace(key)) {
@@ -157,6 +167,15 @@ func (v *Verifier) VerifyRequest(ctx context.Context, req *http.Request, body []
 	params, err := ParseSignatureHeader(raw)
 	if err != nil {
 		return nil, err
+	}
+
+	for _, header := range []string{"(request-target)", "host", "date"} {
+		if !params.Signed(header) {
+			return nil, fmt.Errorf("%w: cabeçalho %q precisa estar assinado", ErrInvalidSignature, header)
+		}
+	}
+	if req.Method == http.MethodPost && !params.Signed("digest") {
+		return nil, fmt.Errorf("%w: cabeçalho %q precisa estar assinado", ErrInvalidSignature, "digest")
 	}
 
 	if err := v.validateDate(req.Header.Get("Date")); err != nil {

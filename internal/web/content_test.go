@@ -1017,16 +1017,16 @@ func TestEntryEditFormAndUpdate(t *testing.T) {
 	}
 
 	response := postForm(router, "/diario/cycle-1/registros/entry-1/editar", url.Values{
-		"csrf_token": {csrf.Value},
-		"occurred_at": {time.Now().Add(1 * time.Hour).Format("2006-01-02T15:04")},
-		"body": {"Registro atualizado."},
-		"stage": {"flowering"},
-		"measurements": {"altura_cm=30\nfolhas=8"},
-		"interventions": {"rega, poda"},
-		"occurrences": {"sem ocorrência"},
+		"csrf_token":       {csrf.Value},
+		"occurred_at":      {time.Now().Add(1 * time.Hour).Format("2006-01-02T15:04")},
+		"body":             {"Registro atualizado."},
+		"stage":            {"flowering"},
+		"measurements":     {"altura_cm=30\nfolhas=8"},
+		"interventions":    {"rega, poda"},
+		"occurrences":      {"sem ocorrência"},
 		"harvest_quantity": {"2"},
-		"harvest_unit": {"kg"},
-		"visibility": {"public"},
+		"harvest_unit":     {"kg"},
+		"visibility":       {"public"},
 	}, session, csrf)
 
 	if response.Code != http.StatusSeeOther {

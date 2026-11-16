@@ -1,7 +1,8 @@
 # ADR 0009 — Implementação da federação
 
-**Status:** Proposto
+**Status:** Aceito
 **Data:** 2026-11-10
+**Atualizado em:** 2026-11-16
 
 ## Contexto
 
@@ -159,6 +160,33 @@ Diretrizes:
 - O comportamento será validado com implementações reais.
 - Fixtures de protocolo serão utilizadas para testes de contrato, mas não substituirão testes de interoperabilidade.
 - A implementação deverá ser conservadora: enviar apenas o necessário e aceitar variações razoáveis de implementações externas.
+
+## Implementação atual
+
+A primeira camada de federação servidor para servidor está implementada em
+`internal/federation`, com os seguintes recortes:
+
+- **Identidade:** Actors `Person` publicam `publicKey` RSA 2048, WebFinger,
+  NodeInfo e as coleções `outbox` e `followers` a partir do banco.
+- **Assinaturas:** envio e validação de HTTP Signatures no perfil legado
+  (`rsa-sha256`) sobre `(request-target)`, `host`, `date`, `digest` e
+  `content-type`. A validação também confere o `Digest` e uma janela de relógio
+  de cinco minutos.
+- **Publicação:** registros de ciclos públicos são traduzidos para `Note`, com
+  imagens em `attachment`, e distribuídos em atividades `Create`.
+- **Entrega:** fila transacional em PostgreSQL processada por trabalhador
+  assíncrono, com recuo exponencial e limite de tentativas.
+- **Recebimento:** o inbox valida a assinatura, aceita `Follow` automaticamente
+  com `Accept`, processa `Undo` e persiste as demais atividades para
+  idempotência.
+- **Segurança:** cliente HTTP remoto com bloqueio de endereços privados,
+  loopback e metadados, limites de redirecionamento e de tamanho de documentos.
+
+Ainda pendentes em relação a este ADR: grupos e organizações federados,
+`sharedInbox`, paginação de coleções, propagação de `Update`/`Delete` de
+publicações já entregues, práticas como `Article`, proteção e rotação de chaves,
+`authorized fetch`, listas de bloqueio e testes contínuos de interoperabilidade
+com instâncias reais.
 
 ## Alternativas consideradas
 
