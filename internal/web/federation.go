@@ -182,6 +182,7 @@ func (s *server) inbox(w http.ResponseWriter, r *http.Request) {
 	err := s.federation.HandleInbox(r.Context(), person.ID, r)
 	switch {
 	case errors.Is(err, federation.ErrMissingSignature), errors.Is(err, federation.ErrInvalidSignature):
+		s.logger.Warn("reject inbox activity", "remote_addr", r.RemoteAddr, "error", err)
 		http.Error(w, "assinatura inválida", http.StatusUnauthorized)
 		return
 	case errors.Is(err, federation.ErrInvalidActivity):
