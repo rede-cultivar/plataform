@@ -15,6 +15,7 @@ import (
 
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
+	"github.com/rede-cultivar/plataform/internal/sitesettings"
 )
 
 const testPassword = "senha-correta-123"
@@ -53,9 +54,13 @@ func (f *fakeIdentity) Register(_ context.Context, input identity.RegisterInput)
 	account := &identity.Account{
 		ID:        fmt.Sprintf("account-%d", f.nextID),
 		Email:     input.Email,
-		Status:    "active",
+		Status:    input.Status,
+		Role:      identity.RoleMember,
 		CreatedAt: time.Now(),
 		Person:    person,
+	}
+	if account.Status == "" {
+		account.Status = identity.StatusActive
 	}
 
 	f.accounts[input.Email] = account
@@ -72,6 +77,9 @@ func (f *fakeIdentity) Authenticate(_ context.Context, email, password string) (
 	account, ok := f.accounts[email]
 	if !ok || password != testPassword {
 		return nil, identity.ErrInvalidCredentials
+	}
+	if account.Status == identity.StatusPending {
+		return nil, identity.ErrAccountPending
 	}
 
 	return account, nil
@@ -147,7 +155,69 @@ func (f *fakeIdentity) Stats(_ context.Context) (identity.Stats, error) {
 	return f.stats, nil
 }
 
+func (f *fakeIdentity) ListPendingAccounts(_ context.Context) ([]identity.Account, error) {
+	var accounts []identity.Account
+	for _, account := range f.accounts {
+		if account.Status == identity.StatusPending {
+			accounts = append(accounts, *account)
+		}
+	}
+	return accounts, nil
+}
+
+func (f *fakeIdentity) ApproveAccount(_ context.Context, accountID string) error {
+	for _, account := range f.accounts {
+		if account.ID == accountID && account.Status == identity.StatusPending {
+			account.Status = identity.StatusActive
+			return nil
+		}
+	}
+	return identity.ErrNotFound
+}
+
+func (f *fakeIdentity) RejectAccount(_ context.Context, accountID string) error {
+	for email, account := range f.accounts {
+		if account.ID == accountID && account.Status == identity.StatusPending {
+			delete(f.accounts, email)
+			delete(f.people, account.Person.Handle)
+			return nil
+		}
+	}
+	return identity.ErrNotFound
+}
+
+type fakeSiteSettings struct {
+	settings *sitesettings.Settings
+	updateErr error
+}
+
+func (f *fakeSiteSettings) Get(_ context.Context) (*sitesettings.Settings, error) {
+	if f.settings == nil {
+		return sitesettings.Default(), nil
+	}
+	settings := *f.settings
+	return &settings, nil
+}
+
+func (f *fakeSiteSettings) Update(_ context.Context, input sitesettings.UpdateInput) (*sitesettings.Settings, error) {
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+	if err := sitesettings.Validate(input); err != nil {
+		return nil, err
+	}
+	f.settings = &sitesettings.Settings{
+		RegistrationsMode:          input.RegistrationsMode,
+		ClosedRegistrationsMessage: input.ClosedRegistrationsMessage,
+	}
+	return f.Get(context.Background())
+}
+
 func newAuthTestRouter(t *testing.T, identityService IdentityService, federationServices ...FederationService) http.Handler {
+	return newAuthTestRouterWithSettings(t, identityService, nil, federationServices...)
+}
+
+func newAuthTestRouterWithSettings(t *testing.T, identityService IdentityService, settings SiteSettingsService, federationServices ...FederationService) http.Handler {
 	t.Helper()
 
 	deps := Deps{
@@ -159,8 +229,9 @@ func newAuthTestRouter(t *testing.T, identityService IdentityService, federation
 			SessionIdleTimeout:     time.Hour,
 			SessionAbsoluteTimeout: 24 * time.Hour,
 		},
-		Identity: identityService,
-		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Identity:     identityService,
+		SiteSettings: settings,
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
 	if len(federationServices) > 0 {
 		deps.Federation = federationServices[0]
@@ -280,6 +351,134 @@ func TestLoginAuthenticatesExistingAccount(t *testing.T) {
 	}
 	if sessionCookie(response) == nil {
 		t.Fatal("login did not set the session cookie")
+	}
+}
+
+func TestClosedRegistrationsHideAndRejectSignup(t *testing.T) {
+	identityService := newFakeIdentity()
+	settings := &fakeSiteSettings{settings: &sitesettings.Settings{
+		RegistrationsMode:          sitesettings.ModeNone,
+		ClosedRegistrationsMessage: "Voltamos em breve.",
+	}}
+	router := newAuthTestRouterWithSettings(t, identityService, settings)
+	csrf := getCSRFCookie(t, router, "/cadastro")
+
+	page := getPage(router, "/cadastro")
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "Voltamos em breve.") {
+		t.Fatalf("GET /cadastro status/body = %d/%s, want closed message", page.Code, page.Body.String())
+	}
+	if strings.Contains(page.Body.String(), `action="/cadastro"`) {
+		t.Error("closed registration page still renders the signup form")
+	}
+
+	response := postForm(router, "/cadastro", url.Values{
+		"csrf_token":       {csrf.Value},
+		"display_name":     {"Nova pessoa"},
+		"handle":           {"novapessoa"},
+		"email":            {"nova@example.com"},
+		"password":         {testPassword},
+		"password_confirm": {testPassword},
+	}, csrf)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("POST /cadastro status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+	if len(identityService.accounts) != 0 {
+		t.Fatal("closed registration created an account")
+	}
+}
+
+func TestApprovedRegistrationCreatesPendingAccount(t *testing.T) {
+	identityService := newFakeIdentity()
+	settings := &fakeSiteSettings{settings: &sitesettings.Settings{RegistrationsMode: sitesettings.ModeApproved}}
+	router := newAuthTestRouterWithSettings(t, identityService, settings)
+	csrf := getCSRFCookie(t, router, "/cadastro")
+
+	response := postForm(router, "/cadastro", url.Values{
+		"csrf_token":       {csrf.Value},
+		"display_name":     {"Nova pessoa"},
+		"handle":           {"novapessoa"},
+		"email":            {"nova@example.com"},
+		"password":         {testPassword},
+		"password_confirm": {testPassword},
+	}, csrf)
+	if response.Code != http.StatusCreated || !strings.Contains(response.Body.String(), "aguardando aprovação") {
+		t.Fatalf("status/body = %d/%s, want pending approval confirmation", response.Code, response.Body.String())
+	}
+	if account := identityService.accounts["nova@example.com"]; account == nil || account.Status != identity.StatusPending {
+		t.Fatalf("created account = %+v, want pending", account)
+	}
+	if sessionCookie(response) != nil {
+		t.Fatal("pending registration unexpectedly started a session")
+	}
+}
+
+func TestAdminCanUpdateRegistrationSettings(t *testing.T) {
+	identityService := newFakeIdentity()
+	member := &identity.Account{ID: "member-1", Role: identity.RoleMember}
+	admin := &identity.Account{ID: "admin-1", Role: identity.RoleAdmin}
+	identityService.sessions["member-session"] = member
+	identityService.sessions["admin-session"] = admin
+	settings := &fakeSiteSettings{settings: sitesettings.Default()}
+	router := newAuthTestRouterWithSettings(t, identityService, settings)
+
+	memberResponse := getPage(router, "/admin/settings", &http.Cookie{Name: sessionCookieName, Value: "member-session"})
+	if memberResponse.Code != http.StatusForbidden {
+		t.Fatalf("non-admin status = %d, want %d", memberResponse.Code, http.StatusForbidden)
+	}
+
+	adminCookie := &http.Cookie{Name: sessionCookieName, Value: "admin-session"}
+	csrf := csrfFor(t, router, "/", adminCookie)
+	response := postForm(router, "/admin/settings", url.Values{
+		"csrf_token":                    {csrf.Value},
+		"registrations_mode":            {sitesettings.ModeNone},
+		"closed_registrations_message": {"Inscrições temporariamente fechadas."},
+	}, adminCookie, csrf)
+	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/admin/settings?updated=1" {
+		t.Fatalf("status/location = %d/%q, want redirect after update", response.Code, response.Header().Get("Location"))
+	}
+	if settings.settings.RegistrationsMode != sitesettings.ModeNone {
+		t.Fatalf("registration mode = %q, want none", settings.settings.RegistrationsMode)
+	}
+}
+
+func TestAdminCanApproveAndRejectPendingAccounts(t *testing.T) {
+	identityService := newFakeIdentity()
+	admin := &identity.Account{ID: "admin-1", Role: identity.RoleAdmin}
+	identityService.sessions["admin-session"] = admin
+	approved, err := identityService.Register(context.Background(), identity.RegisterInput{
+		Email: "aprovar@example.com", Handle: "aprovar", DisplayName: "Aprovar", Status: identity.StatusPending,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected, err := identityService.Register(context.Background(), identity.RegisterInput{
+		Email: "rejeitar@example.com", Handle: "rejeitar", DisplayName: "Rejeitar", Status: identity.StatusPending,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	router := newAuthTestRouterWithSettings(t, identityService, &fakeSiteSettings{settings: sitesettings.Default()})
+	adminCookie := &http.Cookie{Name: sessionCookieName, Value: "admin-session"}
+	csrf := csrfFor(t, router, "/", adminCookie)
+
+	approveResponse := postForm(router, "/admin/accounts/"+approved.ID+"/approve", url.Values{
+		"csrf_token": {csrf.Value},
+	}, adminCookie, csrf)
+	if approveResponse.Code != http.StatusSeeOther {
+		t.Fatalf("approve status = %d, want %d", approveResponse.Code, http.StatusSeeOther)
+	}
+	if identityService.accounts[approved.Email].Status != identity.StatusActive {
+		t.Error("approved account is not active")
+	}
+
+	rejectResponse := postForm(router, "/admin/accounts/"+rejected.ID+"/reject", url.Values{
+		"csrf_token": {csrf.Value},
+	}, adminCookie, csrf)
+	if rejectResponse.Code != http.StatusSeeOther {
+		t.Fatalf("reject status = %d, want %d", rejectResponse.Code, http.StatusSeeOther)
+	}
+	if _, exists := identityService.accounts[rejected.Email]; exists {
+		t.Error("rejected account still exists")
 	}
 }
 

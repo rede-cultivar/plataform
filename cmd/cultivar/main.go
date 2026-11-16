@@ -21,6 +21,7 @@ import (
 	"github.com/rede-cultivar/plataform/internal/platform/logging"
 	"github.com/rede-cultivar/plataform/internal/platform/storage"
 	"github.com/rede-cultivar/plataform/internal/practices"
+	"github.com/rede-cultivar/plataform/internal/sitesettings"
 	"github.com/rede-cultivar/plataform/internal/version"
 	"github.com/rede-cultivar/plataform/internal/web"
 	"github.com/rede-cultivar/plataform/internal/worker"
@@ -46,6 +47,8 @@ func run(args []string) error {
 		return runWorker()
 	case "migrate":
 		return runMigrate(args[1:])
+	case "admin":
+		return runAdmin(args[1:])
 	case "version":
 		fmt.Println(version.String())
 		return nil
@@ -67,6 +70,7 @@ Comandos:
   serve              Inicia o servidor HTTP (padrão)
   worker             Inicia o processamento assíncrono
   migrate <comando>  Executa migrações: up, down, status ou version
+  admin <comando>    Administra papéis: promote, demote ou list
   version            Exibe a versão em execução
   help               Exibe esta ajuda
 
@@ -119,6 +123,7 @@ func runServe() error {
 		Practices:   practices.NewService(db),
 		Media:       media.NewService(db, store),
 		Federation:  federationService,
+		SiteSettings: sitesettings.NewService(db),
 		Logger:      logger,
 	})
 
@@ -233,6 +238,61 @@ func runMigrate(args []string) error {
 
 	if migrateErr != nil {
 		return fmt.Errorf("migrate %s: %w", args[0], migrateErr)
+	}
+
+	return nil
+}
+
+func runAdmin(args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: cultivar admin <promote|demote|list> [identificador]")
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	ctx, stop := signalContext()
+	defer stop()
+
+	db, err := database.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	service := identity.NewService(db, cfg.SessionIdleTimeout, cfg.SessionAbsoluteTimeout)
+
+	switch args[0] {
+	case "promote":
+		if len(args) != 2 {
+			return errors.New("usage: cultivar admin promote <identificador>")
+		}
+		handle := identity.NormalizeHandle(args[1])
+		if err := service.SetRoleByHandle(ctx, handle, identity.RoleAdmin); err != nil {
+			return fmt.Errorf("promover @%s: %w", handle, err)
+		}
+		fmt.Printf("@%s agora é administrador da instância.\n", handle)
+	case "demote":
+		if len(args) != 2 {
+			return errors.New("usage: cultivar admin demote <identificador>")
+		}
+		handle := identity.NormalizeHandle(args[1])
+		if err := service.SetRoleByHandle(ctx, handle, identity.RoleMember); err != nil {
+			return fmt.Errorf("remover administração de @%s: %w", handle, err)
+		}
+		fmt.Printf("@%s agora é membro da instância.\n", handle)
+	case "list":
+		accounts, err := service.ListAccountsWithRoles(ctx)
+		if err != nil {
+			return fmt.Errorf("listar contas: %w", err)
+		}
+		for _, account := range accounts {
+			fmt.Printf("@%s\t%s\t%s\t%s\n", account.Person.Handle, account.Role, account.Status, account.Email)
+		}
+	default:
+		return fmt.Errorf("comando administrativo desconhecido %q", args[0])
 	}
 
 	return nil

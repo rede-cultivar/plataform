@@ -92,6 +92,16 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cadastro indisponível", http.StatusServiceUnavailable)
 		return
 	}
+	settings, err := s.currentSiteSettings(r.Context())
+	if err != nil {
+		s.logger.Error("load registration settings", "error", err)
+		http.Error(w, "cadastro indisponível", http.StatusServiceUnavailable)
+		return
+	}
+	if !settings.Open() {
+		s.renderRegister(w, r, http.StatusForbidden, "", "", "", "")
+		return
+	}
 	if !s.parseForm(w, r) {
 		return
 	}
@@ -117,11 +127,16 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	status := identity.StatusActive
+	if settings.RequiresApproval() {
+		status = identity.StatusPending
+	}
 	account, err := s.identity.Register(r.Context(), identity.RegisterInput{
 		Email:       email,
 		Password:    password,
 		Handle:      handle,
 		DisplayName: displayName,
+		Status:      status,
 	})
 	if err != nil {
 		if message, ok := registerErrorMessage(err); ok {
@@ -131,6 +146,13 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 
 		s.logger.Error("register account", "error", err)
 		s.renderRegister(w, r, http.StatusInternalServerError, "Não foi possível criar a conta. Tente novamente.", email, handle, displayName)
+		return
+	}
+	if account.Status == identity.StatusPending {
+		data := s.newPage(w, r)
+		data.RegistrationPending = true
+		data.Notice = "Cadastro enviado. A conta ficará disponível depois da aprovação da administração."
+		s.render(w, http.StatusCreated, "register.html", data)
 		return
 	}
 
@@ -183,6 +205,10 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 
 	account, err := s.identity.Authenticate(r.Context(), email, r.PostFormValue("password"))
 	if err != nil {
+		if errors.Is(err, identity.ErrAccountPending) {
+			s.renderLogin(w, r, http.StatusForbidden, "Seu cadastro aguarda aprovação da administração.", email, next)
+			return
+		}
 		if errors.Is(err, identity.ErrInvalidCredentials) || errors.Is(err, identity.ErrAccountDisabled) {
 			s.renderLogin(w, r, http.StatusUnauthorized, "E-mail ou senha inválidos.", email, next)
 			return

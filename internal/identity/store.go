@@ -56,13 +56,14 @@ func (s *Store) CreateAccount(ctx context.Context, input RegisterInput, password
 	var account Account
 	var verifiedAt *time.Time
 	err = tx.QueryRow(ctx, `
-		INSERT INTO accounts (person_id, email, password_hash)
-		VALUES ($1, $2, $3)
-		RETURNING id::text, email, status, email_verified_at, created_at
-	`, person.ID, input.Email, passwordHash).Scan(
+		INSERT INTO accounts (person_id, email, password_hash, status)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id::text, email, status, role, email_verified_at, created_at
+	`, person.ID, input.Email, passwordHash, input.Status).Scan(
 		&account.ID,
 		&account.Email,
 		&account.Status,
+		&account.Role,
 		&verifiedAt,
 		&account.CreatedAt,
 	)
@@ -89,7 +90,7 @@ func (s *Store) FindCredentialsByEmail(ctx context.Context, email string) (*Cred
 	var verifiedAt *time.Time
 
 	err := s.db.QueryRow(ctx, `
-		SELECT a.id::text, a.email, a.status, a.email_verified_at, a.created_at, a.password_hash,
+		SELECT a.id::text, a.email, a.status, a.role, a.email_verified_at, a.created_at, a.password_hash,
 		       p.id::text, p.handle, p.display_name, p.bio, p.created_at
 		FROM accounts a
 		JOIN people p ON p.id = a.person_id
@@ -98,6 +99,7 @@ func (s *Store) FindCredentialsByEmail(ctx context.Context, email string) (*Cred
 		&credentials.ID,
 		&credentials.Email,
 		&credentials.Status,
+		&credentials.Role,
 		&verifiedAt,
 		&credentials.CreatedAt,
 		&credentials.PasswordHash,
@@ -249,7 +251,7 @@ func (s *Store) FindSessionAccount(ctx context.Context, tokenHash []byte) (*Acco
 	var sessionID string
 
 	err := s.db.QueryRow(ctx, `
-		SELECT a.id::text, a.email, a.status, a.email_verified_at, a.created_at,
+		SELECT a.id::text, a.email, a.status, a.role, a.email_verified_at, a.created_at,
 		       p.id::text, p.handle, p.display_name, p.bio, p.created_at,
 		       s.id::text
 		FROM sessions s
@@ -264,6 +266,7 @@ func (s *Store) FindSessionAccount(ctx context.Context, tokenHash []byte) (*Acco
 		&account.ID,
 		&account.Email,
 		&account.Status,
+		&account.Role,
 		&verifiedAt,
 		&account.CreatedAt,
 		&account.Person.ID,
@@ -304,6 +307,165 @@ func (s *Store) RevokeSession(ctx context.Context, tokenHash []byte) error {
 		WHERE token_hash = $1 AND revoked_at IS NULL
 	`, tokenHash)
 	return err
+}
+
+// ListPendingAccounts retorna as contas que aguardam aprovação.
+func (s *Store) ListPendingAccounts(ctx context.Context) ([]Account, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT a.id::text, a.email, a.status, a.role, a.email_verified_at, a.created_at,
+		       p.id::text, p.handle, p.display_name, p.bio, p.created_at
+		FROM accounts a
+		JOIN people p ON p.id = a.person_id
+		WHERE a.status = 'pending'
+		ORDER BY a.created_at, a.id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var accounts []Account
+	for rows.Next() {
+		var account Account
+		var verifiedAt *time.Time
+		if err := rows.Scan(
+			&account.ID,
+			&account.Email,
+			&account.Status,
+			&account.Role,
+			&verifiedAt,
+			&account.CreatedAt,
+			&account.Person.ID,
+			&account.Person.Handle,
+			&account.Person.DisplayName,
+			&account.Person.Bio,
+			&account.Person.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		account.EmailVerified = verifiedAt != nil
+		accounts = append(accounts, account)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return accounts, nil
+}
+
+// ApproveAccount ativa uma conta pendente.
+func (s *Store) ApproveAccount(ctx context.Context, accountID string) error {
+	tag, err := s.db.Exec(ctx, `
+		UPDATE accounts
+		SET status = 'active', updated_at = now()
+		WHERE id::text = $1 AND status = 'pending'
+	`, accountID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// RejectAccount exclui uma conta pendente e a pessoa associada, liberando o
+// e-mail e o identificador para um novo cadastro.
+func (s *Store) RejectAccount(ctx context.Context, accountID string) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var personID string
+	err = tx.QueryRow(ctx, `
+		DELETE FROM accounts
+		WHERE id::text = $1 AND status = 'pending'
+		RETURNING person_id::text
+	`, accountID).Scan(&personID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM people
+		WHERE id::text = $1
+		  AND NOT EXISTS (SELECT 1 FROM accounts WHERE person_id::text = $1)
+	`, personID); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+// SetRoleByHandle altera o papel de instância de uma conta pelo identificador.
+func (s *Store) SetRoleByHandle(ctx context.Context, handle, role string) error {
+	tag, err := s.db.Exec(ctx, `
+		UPDATE accounts
+		SET role = $2, updated_at = now()
+		WHERE id = (
+			SELECT a.id
+			FROM accounts a
+			JOIN people p ON p.id = a.person_id
+			WHERE lower(p.handle) = lower($1)
+		)
+	`, handle, role)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// ListAccountsWithRoles retorna as contas com seus papéis, para uso administrativo.
+func (s *Store) ListAccountsWithRoles(ctx context.Context) ([]Account, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT a.id::text, a.email, a.status, a.role, a.email_verified_at, a.created_at,
+		       p.id::text, p.handle, p.display_name, p.bio, p.created_at
+		FROM accounts a
+		JOIN people p ON p.id = a.person_id
+		ORDER BY a.created_at, a.id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var accounts []Account
+	for rows.Next() {
+		var account Account
+		var verifiedAt *time.Time
+		if err := rows.Scan(
+			&account.ID,
+			&account.Email,
+			&account.Status,
+			&account.Role,
+			&verifiedAt,
+			&account.CreatedAt,
+			&account.Person.ID,
+			&account.Person.Handle,
+			&account.Person.DisplayName,
+			&account.Person.Bio,
+			&account.Person.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		account.EmailVerified = verifiedAt != nil
+		accounts = append(accounts, account)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return accounts, nil
 }
 
 func isUniqueViolation(err error, constraint string) bool {

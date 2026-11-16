@@ -1,0 +1,61 @@
+{{define "content"}}
+<section class="panel panel-wide">
+  <h1>Administração da instância</h1>
+
+  <form method="post" action="/admin/settings" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    <label>
+      Novos cadastros
+      <select name="registrations_mode">
+        <option value="open" {{if eq .RegistrationsMode "open"}}selected{{end}}>Abertos</option>
+        <option value="approved" {{if eq .RegistrationsMode "approved"}}selected{{end}}>Exigem aprovação</option>
+        <option value="none" {{if eq .RegistrationsMode "none"}}selected{{end}}>Fechados</option>
+      </select>
+    </label>
+
+    <label>
+      Mensagem exibida com os cadastros fechados
+      <textarea name="closed_registrations_message" rows="3" maxlength="500">{{.ClosedRegistrationsMessage}}</textarea>
+      <span class="hint">Máximo de 500 caracteres.</span>
+    </label>
+
+    <button type="submit">Salvar configurações</button>
+  </form>
+
+  <h2>Cadastros pendentes</h2>
+  {{if .PendingAccounts}}
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Nome</th><th>Identificador</th><th>E-mail</th><th>Data</th><th>Ações</th></tr>
+        </thead>
+        <tbody>
+          {{range .PendingAccounts}}
+            <tr>
+              <td>{{.Person.DisplayName}}</td>
+              <td>@{{.Person.Handle}}</td>
+              <td>{{.Email}}</td>
+              <td>{{.CreatedAt.Format "02/01/2006"}}</td>
+              <td>
+                <div class="actions">
+                  <form method="post" action="/admin/accounts/{{.ID}}/approve">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <button type="submit">Aprovar</button>
+                  </form>
+                  <form method="post" action="/admin/accounts/{{.ID}}/reject">
+                    <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                    <button type="submit" class="button-secondary">Rejeitar</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  {{else}}
+    <p class="muted">Não há cadastros aguardando aprovação.</p>
+  {{end}}
+</section>
+{{end}}

@@ -13,6 +13,7 @@
     <nav class="site-nav">
       <a href="/diario">Diário</a>
       <a href="/praticas">Práticas</a>
+      {{if .IsAdmin}}<a href="/admin/settings">Administração</a>{{end}}
       {{if .Account}}
         <a href="/perfil/{{.Account.Person.Handle}}">Meu perfil</a>
         <a href="/conta">Minha conta</a>
@@ -22,7 +23,7 @@
         </form>
       {{else}}
         <a href="/entrar">Entrar</a>
-        <a href="/cadastro">Criar conta</a>
+        {{if .RegistrationsOpen}}<a href="/cadastro">Criar conta</a>{{end}}
       {{end}}
       <span class="badge">ambiente {{.Env}}</span>
     </nav>

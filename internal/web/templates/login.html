@@ -20,6 +20,6 @@
     <button type="submit">Entrar</button>
   </form>
 
-  <p class="muted">Ainda não tem conta? <a href="/cadastro">Criar conta</a>.</p>
+  {{if .RegistrationsOpen}}<p class="muted">Ainda não tem conta? <a href="/cadastro">Criar conta</a>.</p>{{end}}
 </section>
 {{end}}

@@ -253,6 +253,31 @@ button:hover {
   margin: 0;
 }
 
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.table-scroll th,
+.table-scroll td {
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.table-scroll td .actions {
+  margin: 0;
+}
+
+.table-scroll td form {
+  margin: 0;
+}
+
 .followers {
   display: flex;
   flex-direction: column;

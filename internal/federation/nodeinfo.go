@@ -81,7 +81,12 @@ func NewNodeInfoIndex(urls URLs) NodeInfoIndex {
 }
 
 // NewNodeInfo monta o documento NodeInfo 2.0 da instância.
-func NewNodeInfo(instanceName, softwareVersion string, stats identity.Stats) NodeInfo {
+func NewNodeInfo(instanceName, softwareVersion string, stats identity.Stats, registrationsOpen ...bool) NodeInfo {
+	open := true
+	if len(registrationsOpen) > 0 {
+		open = registrationsOpen[0]
+	}
+
 	return NodeInfo{
 		Version: NodeInfoVersion,
 		Software: NodeInfoSoftware{
@@ -93,7 +98,7 @@ func NewNodeInfo(instanceName, softwareVersion string, stats identity.Stats) Nod
 			Inbound:  []string{},
 			Outbound: []string{},
 		},
-		OpenRegistrations: true,
+		OpenRegistrations: open,
 		Usage: NodeInfoUsage{
 			Users: NodeInfoUsers{
 				Total:          stats.TotalAccounts,

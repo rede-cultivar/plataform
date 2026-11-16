@@ -75,6 +75,19 @@ tentativas por endereço.
 A verificação de e-mail e a recuperação de senha ainda não foram implementadas.
 Até lá, contas novas ficam com `email_verified_at` vazio.
 
+A administração da instância é acessada em `/admin/settings` por contas com o
+papel `admin`. Para promover a primeira conta, use o comando administrativo
+após aplicar as migrações, por exemplo:
+
+```sh
+cultivar admin promote identificador
+```
+
+O painel permite deixar os cadastros abertos, exigir aprovação administrativa
+ou fechá-los com uma mensagem configurável. Contas pendentes podem ser
+aprovadas ou rejeitadas pela mesma página. O modo fechado também bloqueia o
+`POST /cadastro`, não apenas o formulário, e é refletido no NodeInfo.
+
 ## Perfil e identidade federada
 
 O perfil pode ser editado em `GET /conta/perfil`, com nome de exibição e
