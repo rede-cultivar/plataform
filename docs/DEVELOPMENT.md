@@ -115,7 +115,8 @@ nome, avatar e link do perfil remoto. Os dados públicos de cada Actor são
 buscados sob demanda e mantidos em cache na memória do processo por uma hora;
 quando a instância remota não responde, a listagem degrada para o identificador
 do Actor. As imagens de avatar são carregadas diretamente da instância remota
-pelo navegador.
+pelo navegador; por isso a política de segurança de conteúdo permite imagens
+`https:` de qualquer origem.
 
 ## Diário de cultivo e práticas
 
