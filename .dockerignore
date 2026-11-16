@@ -9,3 +9,8 @@ coverage.out
 docs
 governance
 assets
+tmp/
+vendor/
+.idea/
+.vscode/
+*.log

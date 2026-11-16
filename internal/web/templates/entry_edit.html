@@ -1,0 +1,111 @@
+{{define "content"}}
+<section class="panel panel-wide">
+  <p class="muted"><a href="/diario/{{.Cycle.ID}}">{{.Cycle.Name}}</a> · editar registro</p>
+  <h1>Editar registro de cultivo</h1>
+
+  <form method="post" action="/diario/{{.Cycle.ID}}/registros/{{.FormEntry.ID}}/editar" enctype="multipart/form-data" class="stack">
+    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+
+    {{with index $.EntryMedia $.FormEntry.ID}}
+      <fieldset>
+        <legend>Fotos do registro</legend>
+        {{range .}}
+          <label class="media-choice">
+            <input type="checkbox" name="delete_photo" value="{{.ID}}">
+            <img src="/media/{{.ID}}" alt="{{.OriginalName}}" loading="lazy" style="max-width: 120px; max-height: 120px; object-fit: cover;">
+            <span>{{.OriginalName}}</span>
+          </label>
+        {{end}}
+      </fieldset>
+    {{end}}
+
+    <label>
+      Adicionar fotos
+      <input type="file" name="photos" accept="image/jpeg,image/png,image/gif" multiple>
+      <span class="hint">Até 4 imagens no total por registro. Marque as fotos acima para remover.</span>
+    </label>
+
+    <label>
+      Data e hora
+      <input type="datetime-local" name="occurred_at" value="{{.FormEntry.OccurredAt.Format "2006-01-02T15:04"}}" required>
+    </label>
+
+    <label>
+      Observações
+      <textarea name="body" rows="6" maxlength="5000">{{.FormEntry.Body}}</textarea>
+      <span class="hint">Descreva o que foi observado, sem transformar o registro em laudo técnico.</span>
+    </label>
+
+    <label>
+      Estágio observado
+      <select name="stage">
+        <option value="">Não informado</option>
+        <option value="germination" {{if eq .FormEntry.StageValue "germination"}}selected{{end}}>Germinação</option>
+        <option value="seedling" {{if eq .FormEntry.StageValue "seedling"}}selected{{end}}>Muda</option>
+        <option value="vegetative" {{if eq .FormEntry.StageValue "vegetative"}}selected{{end}}>Vegetativo</option>
+        <option value="flowering" {{if eq .FormEntry.StageValue "flowering"}}selected{{end}}>Floração</option>
+        <option value="fruiting" {{if eq .FormEntry.StageValue "fruiting"}}selected{{end}}>Frutificação</option>
+        <option value="harvest" {{if eq .FormEntry.StageValue "harvest"}}selected{{end}}>Colheita</option>
+        <option value="finished" {{if eq .FormEntry.StageValue "finished"}}selected{{end}}>Encerrado</option>
+      </select>
+    </label>
+
+    <label>
+      Medidas observadas
+      <textarea name="measurements" rows="4" placeholder="altura_cm=25&#10;temperatura_c=22">{{.MeasurementsText}}</textarea>
+      <span class="hint">Uma medida por linha, no formato nome=valor. Exemplos: altura_cm, temperatura_c, umidade_pct, ph.</span>
+    </label>
+
+    <label>
+      Intervenções realizadas
+      <input type="text" name="interventions" value="{{.InterventionsText}}" placeholder="rega, adubação, poda">
+      <span class="hint">Separe os itens por vírgula.</span>
+    </label>
+
+    <label>
+      Ocorrências
+      <input type="text" name="occurrences" value="{{.OccurrencesText}}" placeholder="praga, doença, evento climático">
+      <span class="hint">Separe os itens por vírgula.</span>
+    </label>
+
+    <label>
+      Quantidade colhida
+      <input type="number" name="harvest_quantity" value="{{.FormEntry.HarvestQuantityValue}}" min="0" step="0.001">
+    </label>
+
+    <label>
+      Unidade da colheita
+      <input type="text" name="harvest_unit" value="{{.FormEntry.HarvestUnit}}" maxlength="20" placeholder="kg, g, unidades">
+    </label>
+
+    {{if .Practices}}
+      <label>
+        Prática utilizada
+        <select name="practice_id">
+          <option value="">Nenhuma prática vinculada</option>
+          {{range .Practices}}
+            <option value="{{.ID}}" {{if eq $.FormEntry.PracticeID .ID}}selected{{end}}>{{.Title}}</option>
+          {{end}}
+        </select>
+        <span class="hint">Vincule o registro a uma prática pública para relacionar aplicação e resultado.</span>
+      </label>
+    {{end}}
+
+    <label>
+      Visibilidade
+      <select name="visibility">
+        <option value="inherit" {{if eq (printf "%s" .FormEntry.Visibility) "inherit"}}selected{{end}}>Herdar do ciclo</option>
+        <option value="private" {{if eq (printf "%s" .FormEntry.Visibility) "private"}}selected{{end}}>Privado</option>
+        <option value="followers" {{if eq (printf "%s" .FormEntry.Visibility) "followers"}}selected{{end}}>Seguidores</option>
+        <option value="public" {{if eq (printf "%s" .FormEntry.Visibility) "public"}}selected{{end}}>Público</option>
+      </select>
+      <span class="hint">A visibilidade do registro nunca será mais ampla que a do ciclo.</span>
+    </label>
+
+    <div class="actions">
+      <button type="submit">Salvar alterações</button>
+      <a class="button button-secondary" href="/diario/{{.Cycle.ID}}">Cancelar</a>
+    </div>
+  </form>
+</section>
+{{end}}

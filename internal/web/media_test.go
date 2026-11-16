@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
 	"github.com/rede-cultivar/plataform/internal/media"
@@ -223,6 +224,54 @@ func TestCreateEntryUploadsPhotoAndServesIt(t *testing.T) {
 	}
 	if !bytes.Equal(image.Body.Bytes(), testPNG(t)) {
 		t.Error("served image differs from the uploaded content")
+	}
+}
+
+func TestEntryEditCanDeleteAndAddPhotos(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cycle := sampleCycle("cycle-1", cultivation.VisibilityPrivate)
+	cultivationService.cycles["cycle-1"] = cycle
+	stage := cultivation.StageVegetative
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro inicial.",
+		Stage:        &stage,
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	mediaService := newFakeMedia()
+	mediaService.assets["asset-1"] = &media.Asset{ID: "asset-1", OwnerID: "person-1", OriginalName: "antiga.png", ContentType: "image/png", Width: 1, Height: 1, Status: media.StatusReady}
+	mediaService.data["asset-1"] = testPNG(t)
+	mediaService.attachments["entry-1"] = []string{"asset-1"}
+
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice(), mediaService)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1/registros/entry-1/editar", session)
+
+	response := postMultipart(router, "/diario/cycle-1/registros/entry-1/editar", map[string]string{
+		"csrf_token":  csrf.Value,
+		"occurred_at": "2026-09-10T09:30",
+		"body":        "Registro atualizado.",
+		"visibility":  "public",
+		"delete_photo": "asset-1",
+	}, []uploadFile{{Name: "nova.png", Data: testPNG(t)}}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if _, ok := mediaService.assets["asset-1"]; ok {
+		t.Fatal("old image still exists after deletion")
+	}
+	if len(mediaService.attachments["entry-1"]) != 1 {
+		t.Fatalf("attachments after update = %v, want exactly 1 remaining image", mediaService.attachments["entry-1"])
+	}
+	if got := cultivationService.entries["cycle-1"][0].Body; got != "Registro atualizado." {
+		t.Errorf("updated body = %q, want Registro atualizado.", got)
 	}
 }
 

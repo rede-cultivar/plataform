@@ -13,6 +13,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
+	"github.com/rede-cultivar/plataform/internal/federation"
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
@@ -102,6 +103,13 @@ func runServe() error {
 	}
 	cancelSetup()
 
+	federationService := federation.NewService(
+		db,
+		federation.NewURLs(cfg.BaseURL()),
+		logger,
+		!cfg.IsProduction(),
+	)
+
 	handler := web.NewRouter(web.Deps{
 		Config:      cfg,
 		DB:          db,
@@ -110,6 +118,7 @@ func runServe() error {
 		Cultivation: cultivation.NewService(db),
 		Practices:   practices.NewService(db),
 		Media:       media.NewService(db, store),
+		Federation:  federationService,
 		Logger:      logger,
 	})
 
@@ -169,10 +178,18 @@ func runWorker() error {
 	}
 	defer db.Close()
 
+	federationService := federation.NewService(
+		db,
+		federation.NewURLs(cfg.BaseURL()),
+		logger,
+		!cfg.IsProduction(),
+	)
+
 	return worker.Run(ctx, worker.Deps{
 		DB:           db,
 		Logger:       logger,
 		PollInterval: cfg.WorkerPollInterval,
+		Deliveries:   federationService,
 	})
 }
 

@@ -1,8 +1,4 @@
 // Package worker executa o processamento assíncrono da aplicação.
-//
-// A primeira versão apenas mantém o processo ativo e verifica a conectividade
-// com o banco. O processamento do outbox federado será adicionado na etapa de
-// implementação da federação.
 package worker
 
 import (
@@ -13,11 +9,17 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// DeliveryProcessor entrega atividades federadas pendentes.
+type DeliveryProcessor interface {
+	ProcessDeliveries(ctx context.Context) (int, error)
+}
+
 // Deps reúne as dependências do trabalhador assíncrono.
 type Deps struct {
 	DB           *pgxpool.Pool
 	Logger       *slog.Logger
 	PollInterval time.Duration
+	Deliveries   DeliveryProcessor
 }
 
 // Run mantém o trabalhador em execução até o cancelamento do contexto.
@@ -41,7 +43,19 @@ func Run(ctx context.Context, deps Deps) error {
 				deps.Logger.Warn("worker database check failed", "error", err)
 				continue
 			}
-			deps.Logger.Debug("worker tick; outbox processing is not implemented yet")
+
+			if deps.Deliveries == nil {
+				continue
+			}
+
+			delivered, err := deps.Deliveries.ProcessDeliveries(ctx)
+			if err != nil {
+				deps.Logger.Warn("worker federation delivery failed", "error", err)
+				continue
+			}
+			if delivered > 0 {
+				deps.Logger.Info("worker delivered federation activities", "count", delivered)
+			}
 		}
 	}
 }

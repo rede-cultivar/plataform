@@ -57,6 +57,31 @@ func (u URLs) Following(id string) string {
 	return u.Actor(id) + "/following"
 }
 
+// Key retorna o identificador da chave pública do Actor.
+func (u URLs) Key(id string) string {
+	return u.Actor(id) + "#main-key"
+}
+
+// Note retorna a URL canônica de uma publicação federada.
+func (u URLs) Note(id string) string {
+	return u.base + "/notas/" + url.PathEscape(id)
+}
+
+// Entry retorna a página pública de um registro de cultivo.
+func (u URLs) Entry(cycleID, entryID string) string {
+	return u.base + "/diario/" + url.PathEscape(cycleID) + "#registro-" + url.PathEscape(entryID)
+}
+
+// Activity retorna a URL canônica de uma atividade federada.
+func (u URLs) Activity(id string) string {
+	return u.base + "/activities/" + url.PathEscape(id)
+}
+
+// Media retorna a URL pública de uma imagem anexada a uma publicação.
+func (u URLs) Media(id string) string {
+	return u.base + "/media/" + url.PathEscape(id)
+}
+
 // Profile retorna a página pública do perfil.
 func (u URLs) Profile(handle string) string {
 	return u.base + "/perfil/" + url.PathEscape(handle)

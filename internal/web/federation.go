@@ -7,8 +7,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/rede-cultivar/plataform/internal/cultivation"
 	"github.com/rede-cultivar/plataform/internal/federation"
 	"github.com/rede-cultivar/plataform/internal/identity"
+	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/version"
 )
 
@@ -93,14 +95,42 @@ func (s *server) actor(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	urls := s.federationURLs()
+	actor := federation.NewPersonActor(urls, *person)
+
+	if s.federation != nil {
+		key, err := s.federation.ActorKey(r.Context(), person.ID)
+		if err != nil {
+			s.logger.Error("load actor key", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		actor.PublicKey = &federation.PublicKey{
+			ID:           urls.Key(person.ID),
+			Owner:        actor.ID,
+			PublicKeyPEM: key.PublicPEM,
+		}
+	}
+
 	w.Header().Set("Cache-Control", "public, max-age=60")
-	writeJSONType(w, http.StatusOK, federation.ActivityContentType, federation.NewPersonActor(s.federationURLs(), *person))
+	writeJSONType(w, http.StatusOK, federation.ActivityContentType, actor)
 }
 
 // actorOutbox publica a caixa de saída do Actor.
 func (s *server) actorOutbox(w http.ResponseWriter, r *http.Request) {
 	person, ok := s.findActorPerson(w, r)
 	if !ok {
+		return
+	}
+
+	if s.federation != nil {
+		collection, err := s.federation.Outbox(r.Context(), person.ID)
+		if err != nil {
+			s.logger.Error("load actor outbox", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		s.writeJSONCollection(w, collection)
 		return
 	}
 
@@ -111,6 +141,17 @@ func (s *server) actorOutbox(w http.ResponseWriter, r *http.Request) {
 func (s *server) actorFollowers(w http.ResponseWriter, r *http.Request) {
 	person, ok := s.findActorPerson(w, r)
 	if !ok {
+		return
+	}
+
+	if s.federation != nil {
+		collection, err := s.federation.Followers(r.Context(), person.ID)
+		if err != nil {
+			s.logger.Error("load actor followers", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		s.writeJSONCollection(w, collection)
 		return
 	}
 
@@ -127,16 +168,106 @@ func (s *server) actorFollowing(w http.ResponseWriter, r *http.Request) {
 	s.writeCollection(w, s.federationURLs().Following(person.ID))
 }
 
-// inbox responde às entregas federadas. O recebimento será implementado junto
-// com a validação de assinaturas HTTP e o processamento assíncrono.
+// inbox valida e processa entregas federadas.
 func (s *server) inbox(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.findActorPerson(w, r); !ok {
+	person, ok := s.findActorPerson(w, r)
+	if !ok {
+		return
+	}
+	if s.federation == nil {
+		http.Error(w, "federação indisponível", http.StatusServiceUnavailable)
 		return
 	}
 
-	writeJSON(w, http.StatusNotImplemented, map[string]string{
-		"error": "recebimento federado ainda não implementado",
-	})
+	err := s.federation.HandleInbox(r.Context(), person.ID, r)
+	switch {
+	case errors.Is(err, federation.ErrMissingSignature), errors.Is(err, federation.ErrInvalidSignature):
+		http.Error(w, "assinatura inválida", http.StatusUnauthorized)
+		return
+	case errors.Is(err, federation.ErrInvalidActivity):
+		http.Error(w, "atividade inválida", http.StatusBadRequest)
+		return
+	case err != nil:
+		s.logger.Error("handle inbox activity", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// note publica a representação ActivityPub de um registro público.
+func (s *server) note(w http.ResponseWriter, r *http.Request) {
+	if s.cultivation == nil || s.identity == nil {
+		http.Error(w, "nota não encontrada", http.StatusNotFound)
+		return
+	}
+
+	entry, err := s.cultivation.FindEntry(r.Context(), chi.URLParam(r, "id"))
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "nota não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find entry for note", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	cycle, _, err := s.cultivation.FindCycle(r.Context(), "", entry.CycleID)
+	if err != nil || entry.EffectiveVisibility(cycle) != cultivation.VisibilityPublic {
+		http.Error(w, "nota não encontrada", http.StatusNotFound)
+		return
+	}
+
+	person, err := s.identity.FindPersonByID(r.Context(), entry.AuthorID)
+	if errors.Is(err, identity.ErrNotFound) {
+		http.Error(w, "nota não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find note author", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	var assets []media.Asset
+	if s.media != nil {
+		values, err := s.media.ListByEntryIDs(r.Context(), []string{entry.ID})
+		if err != nil {
+			s.logger.Warn("load note media", "error", err)
+		} else {
+			assets = values[entry.ID]
+		}
+	}
+
+	note := federation.NewEntryNote(s.federationURLs(), *person, *cycle, *entry, assets)
+
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	writeJSONType(w, http.StatusOK, federation.ActivityContentType, note)
+}
+
+// activity devolve uma atividade pública já publicada.
+func (s *server) activity(w http.ResponseWriter, r *http.Request) {
+	if s.federation == nil {
+		http.Error(w, "atividade não encontrada", http.StatusNotFound)
+		return
+	}
+
+	activityID := s.federationURLs().Activity(chi.URLParam(r, "id"))
+	payload, err := s.federation.FindActivity(r.Context(), activityID)
+	if errors.Is(err, federation.ErrNotFound) {
+		http.Error(w, "atividade não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find federation activity", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	writeJSONType(w, http.StatusOK, federation.ActivityContentType, payload)
 }
 
 // findActorPerson resolve o Actor pelo identificador opaco da rota.
@@ -163,4 +294,9 @@ func (s *server) findActorPerson(w http.ResponseWriter, r *http.Request) (*ident
 func (s *server) writeCollection(w http.ResponseWriter, id string) {
 	w.Header().Set("Cache-Control", "public, max-age=60")
 	writeJSONType(w, http.StatusOK, federation.ActivityContentType, federation.NewOrderedCollection(id))
+}
+
+func (s *server) writeJSONCollection(w http.ResponseWriter, collection federation.OrderedCollection) {
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	writeJSONType(w, http.StatusOK, federation.ActivityContentType, collection)
 }

@@ -87,6 +87,14 @@ func (s *Service) FindCycle(ctx context.Context, viewerID, cycleID string) (*Cyc
 	return cycle, visible, nil
 }
 
+// FindEntry busca um registro pelo identificador, sem verificar visibilidade.
+//
+// A verificação de acesso é responsabilidade de quem consulta, que precisa
+// carregar o ciclo correspondente.
+func (s *Service) FindEntry(ctx context.Context, entryID string) (*Entry, error) {
+	return s.store.FindEntry(ctx, entryID)
+}
+
 // ListPersonCycles lista os ciclos de uma pessoa.
 func (s *Service) ListPersonCycles(ctx context.Context, personID string) ([]Cycle, error) {
 	return s.store.ListPersonCycles(ctx, personID)
@@ -113,4 +121,30 @@ func (s *Service) CreateEntry(ctx context.Context, personID, cycleID string, inp
 	}
 
 	return s.store.CreateEntry(ctx, cycleID, personID, input)
+}
+
+// UpdateEntry valida e atualiza um registro do ciclo da pessoa responsável.
+func (s *Service) UpdateEntry(ctx context.Context, personID, cycleID, entryID string, input EntryInput) (*Entry, error) {
+	cycle, err := s.store.FindCycle(ctx, cycleID)
+	if err != nil {
+		return nil, err
+	}
+	if !cycle.IsOwner(personID) {
+		return nil, ErrForbidden
+	}
+
+	entry, err := s.store.FindEntry(ctx, entryID)
+	if err != nil {
+		return nil, err
+	}
+	if entry.CycleID != cycle.ID {
+		return nil, ErrForbidden
+	}
+
+	input = NormalizeEntryInput(input)
+	if err := ValidateEntryInput(input); err != nil {
+		return nil, err
+	}
+
+	return s.store.UpdateEntry(ctx, entryID, input)
 }

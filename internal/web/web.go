@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
+	"github.com/rede-cultivar/plataform/internal/federation"
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
@@ -49,6 +50,8 @@ type CultivationService interface {
 	ListPersonCycles(ctx context.Context, personID string) ([]cultivation.Cycle, error)
 	ListPublicCycles(ctx context.Context, filter cultivation.CycleFilter) ([]cultivation.Cycle, error)
 	CreateEntry(ctx context.Context, personID, cycleID string, input cultivation.EntryInput) (*cultivation.Entry, error)
+	UpdateEntry(ctx context.Context, personID, cycleID, entryID string, input cultivation.EntryInput) (*cultivation.Entry, error)
+	FindEntry(ctx context.Context, entryID string) (*cultivation.Entry, error)
 }
 
 // PracticeService reúne as operações de conhecimento e práticas usadas pela interface.
@@ -72,6 +75,16 @@ type MediaService interface {
 	Delete(ctx context.Context, ownerID, id string) error
 }
 
+// FederationService reúne as operações de federação usadas pela interface web.
+type FederationService interface {
+	ActorKey(ctx context.Context, personID string) (*federation.KeyPair, error)
+	PublishEntry(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) error
+	Outbox(ctx context.Context, personID string) (federation.OrderedCollection, error)
+	Followers(ctx context.Context, personID string) (federation.OrderedCollection, error)
+	HandleInbox(ctx context.Context, personID string, r *http.Request) error
+	FindActivity(ctx context.Context, activityID string) (json.RawMessage, error)
+}
+
 // Deps reúne as dependências necessárias para montar o roteador HTTP.
 type Deps struct {
 	Config      *config.Config
@@ -81,6 +94,7 @@ type Deps struct {
 	Cultivation CultivationService
 	Practices   PracticeService
 	Media       MediaService
+	Federation  FederationService
 	Logger      *slog.Logger
 }
 
@@ -92,6 +106,7 @@ type server struct {
 	cultivation CultivationService
 	practices   PracticeService
 	media       MediaService
+	federation  FederationService
 	logger      *slog.Logger
 	templates   map[string]*template.Template
 	authLimiter *rateLimiter
@@ -154,6 +169,7 @@ var pageFiles = []string{
 	"cycle.html",
 	"cycle_edit.html",
 	"entry_new.html",
+	"entry_edit.html",
 	"practices.html",
 	"practices_mine.html",
 	"practice_new.html",
@@ -178,6 +194,7 @@ func NewRouter(deps Deps) http.Handler {
 		cultivation: deps.Cultivation,
 		practices:   deps.Practices,
 		media:       deps.Media,
+		federation:  deps.Federation,
 		logger:      deps.Logger,
 		templates:   templates,
 		authLimiter: newRateLimiter(10, 15*time.Minute),
@@ -219,6 +236,8 @@ func NewRouter(deps Deps) http.Handler {
 	router.Post("/diario/{id}/editar", s.requireAccount(s.cycleEdit))
 	router.Get("/diario/{id}/registros/novo", s.requireAccount(s.entryNewForm))
 	router.Post("/diario/{id}/registros", s.requireAccount(s.entryCreate))
+	router.Get("/diario/{cycleID}/registros/{entryID}/editar", s.requireAccount(s.entryEditForm))
+	router.Post("/diario/{cycleID}/registros/{entryID}/editar", s.requireAccount(s.entryEdit))
 	router.Get("/diario/{id}", s.cycleShow)
 
 	router.Get("/media/{id}", s.mediaAsset)
@@ -242,6 +261,9 @@ func NewRouter(deps Deps) http.Handler {
 	router.Get("/actors/{id}/followers", s.actorFollowers)
 	router.Get("/actors/{id}/following", s.actorFollowing)
 	router.Post("/actors/{id}/inbox", s.inbox)
+
+	router.Get("/notas/{id}", s.note)
+	router.Get("/activities/{id}", s.activity)
 
 	router.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 

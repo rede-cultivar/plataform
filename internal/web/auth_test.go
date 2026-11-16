@@ -147,10 +147,10 @@ func (f *fakeIdentity) Stats(_ context.Context) (identity.Stats, error) {
 	return f.stats, nil
 }
 
-func newAuthTestRouter(t *testing.T, identityService IdentityService) http.Handler {
+func newAuthTestRouter(t *testing.T, identityService IdentityService, federationServices ...FederationService) http.Handler {
 	t.Helper()
 
-	return NewRouter(Deps{
+	deps := Deps{
 		Config: &config.Config{
 			Env:                    config.EnvDevelopment,
 			InstanceName:           "Cultivar Test",
@@ -161,7 +161,12 @@ func newAuthTestRouter(t *testing.T, identityService IdentityService) http.Handl
 		},
 		Identity: identityService,
 		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-	})
+	}
+	if len(federationServices) > 0 {
+		deps.Federation = federationServices[0]
+	}
+
+	return NewRouter(deps)
 }
 
 func getCSRFCookie(t *testing.T, router http.Handler, target string) *http.Cookie {
