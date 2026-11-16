@@ -1,0 +1,33 @@
+{{define "content"}}
+<section class="panel">
+  <h1>Seguidores</h1>
+
+  <p class="muted">
+    Pessoas do Fediverso que seguem @{{.Account.Person.Handle}}@{{.LocalDomain}}.
+  </p>
+
+  {{if .Followers}}
+    <ul class="followers">
+      {{range .Followers}}
+        <li class="follower">
+          {{if .AvatarURL}}
+            <img class="avatar" src="{{.AvatarURL}}" alt="" width="48" height="48" loading="lazy" referrerpolicy="no-referrer">
+          {{end}}
+          <div>
+            <a href="{{.ProfileURL}}" rel="noopener noreferrer nofollow" target="_blank">
+              {{if .DisplayName}}{{.DisplayName}}{{else}}{{.ActorID}}{{end}}
+            </a>
+            {{if .Handle}}<span class="muted">@{{.Handle}}@{{.Domain}}</span>{{end}}
+          </div>
+        </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p class="muted">Nenhum seguidor ainda.</p>
+  {{end}}
+
+  <p class="actions">
+    <a class="button button-secondary" href="/conta">Voltar para minha conta</a>
+  </p>
+</section>
+{{end}}
