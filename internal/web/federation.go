@@ -168,6 +168,33 @@ func (s *server) actorFollowing(w http.ResponseWriter, r *http.Request) {
 	s.writeCollection(w, s.federationURLs().Following(person.ID))
 }
 
+// accountFollowers exibe, na área autenticada, os seguidores remotos da pessoa.
+func (s *server) accountFollowers(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+
+	data := s.newPage(w, r)
+	if s.federation == nil {
+		data.Error = "A federação está indisponível."
+		s.render(w, http.StatusServiceUnavailable, "account_followers.html", data)
+		return
+	}
+
+	followers, err := s.federation.FollowerProfiles(r.Context(), account.Person.ID)
+	if err != nil {
+		s.logger.Error("load account followers", "error", err)
+		data.Error = "Não foi possível carregar os seguidores."
+		s.render(w, http.StatusInternalServerError, "account_followers.html", data)
+		return
+	}
+
+	data.Followers = followers
+	s.render(w, http.StatusOK, "account_followers.html", data)
+}
+
 // inbox valida e processa entregas federadas.
 func (s *server) inbox(w http.ResponseWriter, r *http.Request) {
 	person, ok := s.findActorPerson(w, r)

@@ -8,10 +8,8 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -218,40 +216,16 @@ func (v *Verifier) VerifyRequest(ctx context.Context, req *http.Request, body []
 
 // FetchActor busca e interpreta o documento Actor de outra instância.
 func (v *Verifier) FetchActor(ctx context.Context, actorURL string) (*RemoteActor, error) {
-	parsed, err := url.Parse(actorURL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return nil, fmt.Errorf("%w: endereço de Actor inválido", ErrInvalidActivity)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, actorURL, nil)
+	actor, err := fetchActorDocument(ctx, v.client, actorURL)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", ActivityContentType+`, application/ld+json; profile="https://www.w3.org/ns/activitystreams"`)
 
-	resp, err := v.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("buscar Actor remoto: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("buscar Actor remoto: status %d", resp.StatusCode)
-	}
-
-	var actor RemoteActor
-	if err := json.NewDecoder(io.LimitReader(resp.Body, maxRemoteDocumentBytes)).Decode(&actor); err != nil {
-		return nil, fmt.Errorf("interpretar Actor remoto: %w", err)
-	}
-
-	if actor.ID == "" || actor.Inbox == "" || actor.PublicKey.PublicKeyPEM == "" {
+	if actor.Inbox == "" || actor.PublicKey.PublicKeyPEM == "" {
 		return nil, fmt.Errorf("%w: Actor remoto incompleto", ErrInvalidActivity)
 	}
-	if !sameURL(actor.ID, actorURL) {
-		return nil, fmt.Errorf("%w: identificador do Actor não confere", ErrInvalidActivity)
-	}
 
-	return &actor, nil
+	return actor, nil
 }
 
 func (v *Verifier) validateDate(value string) error {

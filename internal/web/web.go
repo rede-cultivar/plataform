@@ -81,6 +81,7 @@ type FederationService interface {
 	PublishEntry(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) error
 	Outbox(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	Followers(ctx context.Context, personID string) (federation.OrderedCollection, error)
+	FollowerProfiles(ctx context.Context, personID string) ([]federation.Follower, error)
 	HandleInbox(ctx context.Context, personID string, r *http.Request) error
 	FindActivity(ctx context.Context, activityID string) (json.RawMessage, error)
 }
@@ -145,6 +146,8 @@ type pageData struct {
 	PracticeFilter practices.Filter
 	Practices      []practices.Practice
 
+	Followers []federation.Follower
+
 	MeasurementsText  string
 	InterventionsText string
 	OccurrencesText   string
@@ -163,6 +166,7 @@ var pageFiles = []string{
 	"profile.html",
 	"profile_edit.html",
 	"account.html",
+	"account_followers.html",
 	"diary.html",
 	"diary_mine.html",
 	"cycle_new.html",
@@ -225,6 +229,7 @@ func NewRouter(deps Deps) http.Handler {
 
 	router.Get("/perfil/{handle}", s.profile)
 	router.Get("/conta", s.requireAccount(s.account))
+	router.Get("/conta/seguidores", s.requireAccount(s.accountFollowers))
 	router.Get("/conta/perfil", s.requireAccount(s.profileEditForm))
 	router.Post("/conta/perfil", s.requireAccount(s.profileEdit))
 

@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -21,13 +22,15 @@ import (
 
 // fakeFederation implementa FederationService em memória para os testes HTTP.
 type fakeFederation struct {
-	base       string
-	key        *federation.KeyPair
-	outbox     federation.OrderedCollection
-	followers  federation.OrderedCollection
-	activities map[string]json.RawMessage
-	inboxErr   error
-	inboxCalls int
+	base        string
+	key         *federation.KeyPair
+	outbox      federation.OrderedCollection
+	followers   federation.OrderedCollection
+	profiles    []federation.Follower
+	profilesErr error
+	activities  map[string]json.RawMessage
+	inboxErr    error
+	inboxCalls  int
 }
 
 func newFakeFederation(t *testing.T) *fakeFederation {
@@ -65,6 +68,13 @@ func (f *fakeFederation) Followers(_ context.Context, personID string) (federati
 		return f.followers, nil
 	}
 	return federation.NewOrderedCollection(federation.NewURLs(f.base).Followers(personID)), nil
+}
+
+func (f *fakeFederation) FollowerProfiles(_ context.Context, _ string) ([]federation.Follower, error) {
+	if f.profilesErr != nil {
+		return nil, f.profilesErr
+	}
+	return f.profiles, nil
 }
 
 func (f *fakeFederation) HandleInbox(_ context.Context, _ string, _ *http.Request) error {
@@ -509,5 +519,104 @@ func TestNodeInfoDocument(t *testing.T) {
 	}
 	if document.Metadata.NodeName != "Cultivar Test" {
 		t.Errorf("Metadata.NodeName = %q, want Cultivar Test", document.Metadata.NodeName)
+	}
+}
+
+// authenticateFake cria uma sessão válida para a pessoa "ana" nos testes.
+func authenticateFake(fake *fakeIdentity) *http.Cookie {
+	person := *fake.people["ana"]
+	account := &identity.Account{
+		ID:        "account-1",
+		Email:     "ana@example.com",
+		Status:    "active",
+		CreatedAt: time.Now(),
+		Person:    person,
+	}
+	fake.sessions["token-account-1"] = account
+
+	return &http.Cookie{Name: sessionCookieName, Value: "token-account-1"}
+}
+
+func TestAccountFollowersListsRemoteProfiles(t *testing.T) {
+	router, fake, service := newFederationTestRouterWithService(t)
+	service.profiles = []federation.Follower{
+		{
+			ActorID:     "https://remote.example/users/bob",
+			Handle:      "bob",
+			Domain:      "remote.example",
+			DisplayName: "Bob Remoto",
+			ProfileURL:  "https://remote.example/@bob",
+			AvatarURL:   "https://remote.example/avatars/bob.png",
+		},
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/conta/seguidores", nil)
+	request.AddCookie(authenticateFake(fake))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+
+	body := response.Body.String()
+	for _, expected := range []string{
+		"Seguidores",
+		"Bob Remoto",
+		"@bob@remote.example",
+		"https://remote.example/@bob",
+		"https://remote.example/avatars/bob.png",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("body does not contain %q", expected)
+		}
+	}
+}
+
+func TestAccountFollowersEmptyState(t *testing.T) {
+	router, fake, _ := newFederationTestRouterWithService(t)
+
+	request := httptest.NewRequest(http.MethodGet, "/conta/seguidores", nil)
+	request.AddCookie(authenticateFake(fake))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if body := response.Body.String(); !strings.Contains(body, "Nenhum seguidor ainda.") {
+		t.Errorf("body does not contain the empty state")
+	}
+}
+
+func TestAccountFollowersRequiresLogin(t *testing.T) {
+	router, _, _ := newFederationTestRouterWithService(t)
+
+	request := httptest.NewRequest(http.MethodGet, "/conta/seguidores", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusSeeOther)
+	}
+	if location := response.Header().Get("Location"); location != "/entrar?next=%2Fconta%2Fseguidores" {
+		t.Errorf("Location = %q", location)
+	}
+}
+
+func TestAccountFollowersReportsServiceError(t *testing.T) {
+	router, fake, service := newFederationTestRouterWithService(t)
+	service.profilesErr = errors.New("falha remota")
+
+	request := httptest.NewRequest(http.MethodGet, "/conta/seguidores", nil)
+	request.AddCookie(authenticateFake(fake))
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusInternalServerError)
+	}
+	if body := response.Body.String(); !strings.Contains(body, "Não foi possível carregar os seguidores.") {
+		t.Errorf("body does not contain the error message")
 	}
 }

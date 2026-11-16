@@ -63,6 +63,7 @@ A primeira entrega funcional implementa contas locais com e-mail e senha:
 | `POST /entrar` | Autentica e inicia a sessão |
 | `POST /sair` | Revoga a sessão atual |
 | `GET /conta` | Área autenticada com os dados da conta |
+| `GET /conta/seguidores` | Seguidores remotos da conta autenticada |
 | `GET /perfil/{identificador}` | Perfil público da pessoa |
 
 As senhas são armazenadas com **Argon2id**. As sessões usam tokens opacos de alta
@@ -108,6 +109,13 @@ O recebimento valida `HTTP Signature` (RSA-SHA256), `Digest` e uma janela de
 relógio de cinco minutos antes de processar a atividade. `Follow` é aceito
 automaticamente e gera uma atividade `Accept`; `Undo` remove o seguidor. As
 demais atividades são registradas para garantir idempotência.
+
+A página autenticada `GET /conta/seguidores` mostra os seguidores aceitos com
+nome, avatar e link do perfil remoto. Os dados públicos de cada Actor são
+buscados sob demanda e mantidos em cache na memória do processo por uma hora;
+quando a instância remota não responde, a listagem degrada para o identificador
+do Actor. As imagens de avatar são carregadas diretamente da instância remota
+pelo navegador.
 
 ## Diário de cultivo e práticas
 

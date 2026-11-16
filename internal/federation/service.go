@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,6 +36,9 @@ type Service struct {
 	verifier    *Verifier
 	now         func() time.Time
 	maxAttempts int
+
+	profileMu sync.Mutex
+	profiles  map[string]cachedFollower
 }
 
 // NewService cria o serviço de federação.
@@ -56,6 +60,7 @@ func NewService(db *pgxpool.Pool, urls URLs, logger *slog.Logger, allowPrivate b
 		verifier:    NewVerifier(client),
 		now:         time.Now,
 		maxAttempts: maxDeliveryAttempts,
+		profiles:    make(map[string]cachedFollower),
 	}
 }
 

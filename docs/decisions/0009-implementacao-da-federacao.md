@@ -179,6 +179,10 @@ A primeira camada de federação servidor para servidor está implementada em
 - **Recebimento:** o inbox valida a assinatura, aceita `Follow` automaticamente
   com `Accept`, processa `Undo` e persiste as demais atividades para
   idempotência.
+- **Seguidores:** a página autenticada `GET /conta/seguidores` lista os
+  seguidores aceitos com nome, avatar e perfil público do Actor remoto. Os
+  dados são buscados sob demanda e cacheados em memória por uma hora; falhas
+  remotas degradam para o identificador do Actor.
 - **Segurança:** cliente HTTP remoto com bloqueio de endereços privados,
   loopback e metadados, limites de redirecionamento e de tamanho de documentos.
 
