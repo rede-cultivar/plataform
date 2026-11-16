@@ -46,6 +46,7 @@ type SignatureParams struct {
 // keyId="...",algorithm="...",headers="...",signature="...".
 func ParseSignatureHeader(value string) (*SignatureParams, error) {
 	params := &SignatureParams{}
+	fields := make([]string, 0, 4)
 
 	for _, part := range strings.Split(value, ",") {
 		part = strings.TrimSpace(part)
@@ -57,6 +58,7 @@ func ParseSignatureHeader(value string) (*SignatureParams, error) {
 		if !ok {
 			return nil, fmt.Errorf("%w: campo sem valor", ErrInvalidSignature)
 		}
+	fields = append(fields, strings.TrimSpace(key))
 
 		raw = strings.Trim(strings.TrimSpace(raw), `"`)
 		switch strings.ToLower(strings.TrimSpace(key)) {
@@ -72,7 +74,7 @@ func ParseSignatureHeader(value string) (*SignatureParams, error) {
 	}
 
 	if params.KeyID == "" || params.Signature == "" {
-		return nil, fmt.Errorf("%w: keyId ou signature ausente", ErrInvalidSignature)
+		return nil, fmt.Errorf("%w: keyId ou signature ausente (campos recebidos: %s)", ErrInvalidSignature, strings.Join(fields, ", "))
 	}
 	if params.Algorithm == "" {
 		params.Algorithm = signatureAlgorithm

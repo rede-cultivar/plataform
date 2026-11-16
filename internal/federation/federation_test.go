@@ -49,6 +49,19 @@ func TestURLs(t *testing.T) {
 	}
 }
 
+func TestParseSignatureHeaderReportsParameterNames(t *testing.T) {
+	_, err := ParseSignatureHeader(`sig1=:signature-value:`)
+	if err == nil {
+		t.Fatal("ParseSignatureHeader() error = nil, want missing legacy parameters")
+	}
+	if !strings.Contains(err.Error(), "campos recebidos: sig1") {
+		t.Errorf("error = %q, want received parameter name", err)
+	}
+	if strings.Contains(err.Error(), "signature-value") {
+		t.Errorf("error exposes signature value: %q", err)
+	}
+}
+
 func TestSignedHeaderValueUsesRequestHost(t *testing.T) {
 	request := httptest.NewRequest("POST", "https://cultivar.example/actors/test/inbox", nil)
 
