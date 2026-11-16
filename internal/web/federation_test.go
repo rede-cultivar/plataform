@@ -18,6 +18,7 @@ import (
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
+	"github.com/rede-cultivar/plataform/internal/sitesettings"
 )
 
 // fakeFederation implementa FederationService em memória para os testes HTTP.
@@ -519,6 +520,24 @@ func TestNodeInfoDocument(t *testing.T) {
 	}
 	if document.Metadata.NodeName != "Cultivar Test" {
 		t.Errorf("Metadata.NodeName = %q, want Cultivar Test", document.Metadata.NodeName)
+	}
+}
+
+// authenticateFake cria uma sessão válida para a pessoa "ana" nos testes.
+func TestNodeInfoReportsClosedRegistrations(t *testing.T) {
+	router := newAuthTestRouterWithSettings(t, newFakeIdentity(), &fakeSiteSettings{
+		settings: &sitesettings.Settings{RegistrationsMode: sitesettings.ModeNone},
+	})
+	request := httptest.NewRequest(http.MethodGet, "/nodeinfo/2.0", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var document federation.NodeInfo
+	decodeJSON(t, response, &document)
+	if document.OpenRegistrations {
+		t.Error("OpenRegistrations = true, want false for closed signups")
 	}
 }
 

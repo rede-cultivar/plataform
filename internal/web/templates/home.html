@@ -14,9 +14,10 @@
     </p>
   {{else}}
     <p class="actions">
-      <a class="button" href="/cadastro">Criar conta</a>
+      {{if .RegistrationsOpen}}<a class="button" href="/cadastro">Criar conta</a>{{end}}
       <a class="button button-secondary" href="/entrar">Entrar</a>
     </p>
+    {{if not .RegistrationsOpen}}<p class="muted">{{.ClosedRegistrationsNotice}}</p>{{end}}
   {{end}}
 
   <ul class="links">

@@ -69,6 +69,12 @@ func (s *server) nodeInfoIndex(w http.ResponseWriter, r *http.Request) {
 // nodeInfo publica as informações da instância no formato NodeInfo 2.0.
 func (s *server) nodeInfo(w http.ResponseWriter, r *http.Request) {
 	stats := identity.Stats{}
+	settings, err := s.currentSiteSettings(r.Context())
+	if err != nil {
+		s.logger.Error("load site settings for nodeinfo", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	if s.identity != nil {
 		value, err := s.identity.Stats(r.Context())
 		if err != nil {
@@ -84,7 +90,7 @@ func (s *server) nodeInfo(w http.ResponseWriter, r *http.Request) {
 		w,
 		http.StatusOK,
 		federation.NodeInfoContentType,
-		federation.NewNodeInfo(s.cfg.InstanceName, version.Version, stats),
+		federation.NewNodeInfo(s.cfg.InstanceName, version.Version, stats, settings.Open()),
 	)
 }
 

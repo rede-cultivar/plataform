@@ -58,6 +58,14 @@ func (s *Service) Register(ctx context.Context, input RegisterInput) (*Account, 
 		return nil, err
 	}
 
+	input.Status = strings.TrimSpace(input.Status)
+	if input.Status == "" {
+		input.Status = StatusActive
+	}
+	if input.Status != StatusActive && input.Status != StatusPending {
+		return nil, ErrInvalidAccountStatus
+	}
+
 	passwordHash, err := HashPassword(input.Password)
 	if err != nil {
 		return nil, err
@@ -81,11 +89,51 @@ func (s *Service) Authenticate(ctx context.Context, email, password string) (*Ac
 	if !VerifyPassword(credentials.PasswordHash, password) {
 		return nil, ErrInvalidCredentials
 	}
-	if credentials.Status != "active" {
+	if credentials.Status == StatusPending {
+		return nil, ErrAccountPending
+	}
+	if credentials.Status != StatusActive {
 		return nil, ErrAccountDisabled
 	}
 
 	return &credentials.Account, nil
+}
+
+// ListPendingAccounts retorna as contas que aguardam aprovação.
+func (s *Service) ListPendingAccounts(ctx context.Context) ([]Account, error) {
+	return s.store.ListPendingAccounts(ctx)
+}
+
+// ApproveAccount ativa uma conta pendente.
+func (s *Service) ApproveAccount(ctx context.Context, accountID string) error {
+	return s.store.ApproveAccount(ctx, strings.TrimSpace(accountID))
+}
+
+// RejectAccount exclui uma conta pendente e a pessoa associada.
+func (s *Service) RejectAccount(ctx context.Context, accountID string) error {
+	return s.store.RejectAccount(ctx, strings.TrimSpace(accountID))
+}
+
+// SetRoleByHandle altera o papel de instância de uma conta pelo identificador.
+func (s *Service) SetRoleByHandle(ctx context.Context, handle, role string) error {
+	handle = NormalizeHandle(handle)
+	role = strings.TrimSpace(role)
+
+	switch role {
+	case RoleAdmin, RoleModerator, RoleMember:
+	default:
+		return ErrInvalidRole
+	}
+	if err := ValidateHandle(handle); err != nil {
+		return err
+	}
+
+	return s.store.SetRoleByHandle(ctx, handle, role)
+}
+
+// ListAccountsWithRoles retorna as contas com seus papéis, para uso administrativo.
+func (s *Service) ListAccountsWithRoles(ctx context.Context) ([]Account, error) {
+	return s.store.ListAccountsWithRoles(ctx)
 }
 
 // StartSession cria uma sessão e retorna o token opaco que deve ser enviado

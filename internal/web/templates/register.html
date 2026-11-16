@@ -1,6 +1,14 @@
 {{define "content"}}
 <section class="panel">
+  {{if .RegistrationPending}}
+    <h1>Cadastro recebido</h1>
+  {{else if not .RegistrationsOpen}}
+    <h1>Cadastros fechados</h1>
+    <p>{{.ClosedRegistrationsNotice}}</p>
+    <p class="muted"><a href="/entrar">Entrar</a> se você já tem uma conta.</p>
+  {{else}}
   <h1>Criar conta</h1>
+  {{if eq .RegistrationsMode "approved"}}<p class="muted">Os novos cadastros precisam de aprovação da administração antes do acesso.</p>{{end}}
   <p class="muted">
     A conta permite participar da instância. O identificador público será usado
     para mencionar você e, futuramente, para a identidade federada.
@@ -40,5 +48,6 @@
   </form>
 
   <p class="muted">Já tem uma conta? <a href="/entrar">Entrar</a>.</p>
+  {{end}}
 </section>
 {{end}}

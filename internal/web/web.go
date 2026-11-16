@@ -23,6 +23,7 @@ import (
 	"github.com/rede-cultivar/plataform/internal/platform/config"
 	"github.com/rede-cultivar/plataform/internal/platform/storage"
 	"github.com/rede-cultivar/plataform/internal/practices"
+	"github.com/rede-cultivar/plataform/internal/sitesettings"
 	"github.com/rede-cultivar/plataform/internal/version"
 )
 
@@ -40,6 +41,15 @@ type IdentityService interface {
 	FindPersonByID(ctx context.Context, id string) (*identity.Person, error)
 	UpdateProfile(ctx context.Context, personID, displayName, bio string) (*identity.Person, error)
 	Stats(ctx context.Context) (identity.Stats, error)
+	ListPendingAccounts(ctx context.Context) ([]identity.Account, error)
+	ApproveAccount(ctx context.Context, accountID string) error
+	RejectAccount(ctx context.Context, accountID string) error
+}
+
+// SiteSettingsService reúne as configurações administrativas da instância.
+type SiteSettingsService interface {
+	Get(ctx context.Context) (*sitesettings.Settings, error)
+	Update(ctx context.Context, input sitesettings.UpdateInput) (*sitesettings.Settings, error)
 }
 
 // CultivationService reúne as operações do diário de cultivo usadas pela interface.
@@ -94,23 +104,25 @@ type Deps struct {
 	Identity    IdentityService
 	Cultivation CultivationService
 	Practices   PracticeService
-	Media       MediaService
-	Federation  FederationService
-	Logger      *slog.Logger
+	Media        MediaService
+	Federation   FederationService
+	SiteSettings SiteSettingsService
+	Logger       *slog.Logger
 }
 
 type server struct {
-	cfg         *config.Config
-	db          *pgxpool.Pool
-	storage     *storage.Client
-	identity    IdentityService
-	cultivation CultivationService
-	practices   PracticeService
-	media       MediaService
-	federation  FederationService
-	logger      *slog.Logger
-	templates   map[string]*template.Template
-	authLimiter *rateLimiter
+	cfg          *config.Config
+	db           *pgxpool.Pool
+	storage      *storage.Client
+	identity     IdentityService
+	cultivation  CultivationService
+	practices    PracticeService
+	media        MediaService
+	federation   FederationService
+	siteSettings SiteSettingsService
+	logger       *slog.Logger
+	templates    map[string]*template.Template
+	authLimiter  *rateLimiter
 }
 
 // pageData reúne os dados comuns às páginas renderizadas.
@@ -126,6 +138,14 @@ type pageData struct {
 	CSRFToken string
 	Error     string
 	Notice    string
+
+	IsAdmin                    bool
+	RegistrationsOpen          bool
+	RegistrationPending        bool
+	RegistrationsMode          string
+	ClosedRegistrationsMessage string
+	ClosedRegistrationsNotice  string
+	PendingAccounts            []identity.Account
 
 	Email       string
 	Handle      string
@@ -167,6 +187,7 @@ var pageFiles = []string{
 	"profile_edit.html",
 	"account.html",
 	"account_followers.html",
+	"admin_settings.html",
 	"diary.html",
 	"diary_mine.html",
 	"cycle_new.html",
@@ -199,6 +220,7 @@ func NewRouter(deps Deps) http.Handler {
 		practices:   deps.Practices,
 		media:       deps.Media,
 		federation:  deps.Federation,
+		siteSettings: deps.SiteSettings,
 		logger:      deps.Logger,
 		templates:   templates,
 		authLimiter: newRateLimiter(10, 15*time.Minute),
@@ -232,6 +254,11 @@ func NewRouter(deps Deps) http.Handler {
 	router.Get("/conta/seguidores", s.requireAccount(s.accountFollowers))
 	router.Get("/conta/perfil", s.requireAccount(s.profileEditForm))
 	router.Post("/conta/perfil", s.requireAccount(s.profileEdit))
+	router.Get("/admin", s.requireAdmin(s.adminSettingsForm))
+	router.Get("/admin/settings", s.requireAdmin(s.adminSettingsForm))
+	router.Post("/admin/settings", s.requireAdmin(s.adminSettingsUpdate))
+	router.Post("/admin/accounts/{accountID}/approve", s.requireAdmin(s.adminApproveAccount))
+	router.Post("/admin/accounts/{accountID}/reject", s.requireAdmin(s.adminRejectAccount))
 
 	router.Get("/diario", s.diary)
 	router.Get("/diario/meu", s.requireAccount(s.myDiary))
@@ -280,15 +307,32 @@ func NewRouter(deps Deps) http.Handler {
 }
 
 func (s *server) newPage(w http.ResponseWriter, r *http.Request) pageData {
-	return pageData{
+	account := accountFrom(r.Context())
+	data := pageData{
 		InstanceName: s.cfg.InstanceName,
 		Env:          s.cfg.Env,
 		Version:      version.Version,
 		LocalDomain:  s.cfg.LocalDomain,
 		Year:         time.Now().Year(),
-		Account:      accountFrom(r.Context()),
+		Account:      account,
+		IsAdmin:      account.IsAdmin(),
+		RegistrationsOpen: true,
+		RegistrationsMode: sitesettings.ModeOpen,
+		ClosedRegistrationsNotice: sitesettings.DefaultClosedMessage,
 		CSRFToken:    s.csrfToken(w, r),
 	}
+	if s.siteSettings != nil {
+		settings, err := s.siteSettings.Get(r.Context())
+		if err != nil {
+			s.logger.Warn("load site settings for page", "error", err)
+			data.RegistrationsOpen = false
+		} else {
+			data.RegistrationsOpen = settings.Open()
+			data.RegistrationsMode = settings.RegistrationsMode
+			data.ClosedRegistrationsNotice = settings.ClosedMessage()
+		}
+	}
+	return data
 }
 
 func (s *server) render(w http.ResponseWriter, status int, page string, data pageData) {
