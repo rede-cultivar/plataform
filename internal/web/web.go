@@ -386,7 +386,7 @@ func (s *server) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; style-src 'self'; base-uri 'self'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self'; base-uri 'self'; form-action 'self'")
 
 		if s.cfg.IsProduction() {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
