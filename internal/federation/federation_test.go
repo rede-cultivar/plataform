@@ -2,6 +2,7 @@ package federation
 
 import (
 	"encoding/json"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +46,14 @@ func TestURLs(t *testing.T) {
 	}
 	if got := urls.Profile("ana"); got != "http://localhost:8080/perfil/ana" {
 		t.Errorf("Profile() = %q", got)
+	}
+}
+
+func TestSignedHeaderValueUsesRequestHost(t *testing.T) {
+	request := httptest.NewRequest("POST", "https://cultivar.example/actors/test/inbox", nil)
+
+	if got := signedHeaderValue(request, "host"); got != "cultivar.example" {
+		t.Fatalf("signedHeaderValue(host) = %q, want %q", got, "cultivar.example")
 	}
 }
 

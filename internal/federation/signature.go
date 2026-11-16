@@ -171,7 +171,7 @@ func (v *Verifier) VerifyRequest(ctx context.Context, req *http.Request, body []
 		if header == "(request-target)" {
 			continue
 		}
-		if strings.TrimSpace(req.Header.Get(header)) == "" {
+		if strings.TrimSpace(signedHeaderValue(req, header)) == "" {
 			return nil, fmt.Errorf("%w: cabeçalho %q ausente", ErrInvalidSignature, header)
 		}
 	}
@@ -288,14 +288,19 @@ func buildSigningString(req *http.Request, headers []string) string {
 		switch strings.ToLower(header) {
 		case "(request-target)":
 			lines = append(lines, "(request-target): "+strings.ToLower(req.Method)+" "+req.URL.RequestURI())
-		case "host":
-			lines = append(lines, "host: "+req.Host)
 		default:
-			lines = append(lines, strings.ToLower(header)+": "+req.Header.Get(header))
+			lines = append(lines, strings.ToLower(header)+": "+signedHeaderValue(req, header))
 		}
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func signedHeaderValue(req *http.Request, header string) string {
+	if strings.EqualFold(header, "host") {
+		return req.Host
+	}
+	return req.Header.Get(header)
 }
 
 func digestValue(body []byte) string {
