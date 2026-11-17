@@ -20,6 +20,44 @@ func TestLoadDevelopmentDefaults(t *testing.T) {
 	if cfg.S3.Bucket != "cultivar" {
 		t.Errorf("S3.Bucket = %q, want %q", cfg.S3.Bucket, "cultivar")
 	}
+	if cfg.Storage.Driver != StorageDriverS3 {
+		t.Errorf("Storage.Driver = %q, want %q", cfg.Storage.Driver, StorageDriverS3)
+	}
+}
+
+func TestLoadFilesystemStorageDoesNotRequireS3(t *testing.T) {
+	t.Setenv("CULTIVAR_STORAGE_DRIVER", StorageDriverFilesystem)
+	t.Setenv("CULTIVAR_STORAGE_PATH", "./tmp/test-media")
+	t.Setenv("CULTIVAR_S3_ENDPOINT", "")
+	t.Setenv("CULTIVAR_S3_BUCKET", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Storage.Driver != StorageDriverFilesystem {
+		t.Errorf("Storage.Driver = %q, want %q", cfg.Storage.Driver, StorageDriverFilesystem)
+	}
+	if cfg.Storage.Path != "./tmp/test-media" {
+		t.Errorf("Storage.Path = %q, want %q", cfg.Storage.Path, "./tmp/test-media")
+	}
+}
+
+func TestLoadFilesystemStorageRequiresPath(t *testing.T) {
+	t.Setenv("CULTIVAR_STORAGE_DRIVER", StorageDriverFilesystem)
+	t.Setenv("CULTIVAR_STORAGE_PATH", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want error for empty filesystem storage path")
+	}
+}
+
+func TestLoadRejectsUnknownStorageDriver(t *testing.T) {
+	t.Setenv("CULTIVAR_STORAGE_DRIVER", "disk")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want error for unknown storage driver")
+	}
 }
 
 func TestLoadProductionRequiresSecret(t *testing.T) {

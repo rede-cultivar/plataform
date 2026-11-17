@@ -94,16 +94,19 @@ func runServe() error {
 	}
 	defer db.Close()
 
-	store, err := storage.New(cfg.S3)
+	store, err := storage.NewBackend(cfg)
 	if err != nil {
 		return err
 	}
 
 	setupCtx, cancelSetup := context.WithTimeout(ctx, 5*time.Second)
-	if err := store.EnsureBucket(setupCtx); err != nil {
+	if err := store.Ensure(setupCtx); err != nil {
 		logger.Warn("object storage is not ready; uploads will fail until it is available", "error", err)
 	} else {
-		logger.Info("object storage ready", "bucket", store.Bucket())
+		logger.Info("object storage ready",
+			"driver", cfg.Storage.Driver,
+			"location", store.Location(),
+		)
 	}
 	cancelSetup()
 

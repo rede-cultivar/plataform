@@ -11,6 +11,12 @@ import (
 const (
 	EnvDevelopment = "development"
 	EnvProduction  = "production"
+
+	// StorageDriverS3 usa um serviço compatível com S3, como o S3Mock local.
+	StorageDriverS3 = "s3"
+	// StorageDriverFilesystem grava os objetos em um diretório local. É uma
+	// opção de desenvolvimento e teste, com persistência entre reinícios.
+	StorageDriverFilesystem = "filesystem"
 )
 
 // Config reúne as configurações da aplicação, carregadas de variáveis de ambiente.
@@ -27,7 +33,14 @@ type Config struct {
 	SessionIdleTimeout     time.Duration
 	SessionAbsoluteTimeout time.Duration
 	CookieSecure           bool
+	Storage                Storage
 	S3                     S3
+}
+
+// Storage escolhe o backend de armazenamento de objetos.
+type Storage struct {
+	Driver string
+	Path   string
 }
 
 // S3 reúne as configurações de armazenamento de objetos compatível com S3.
@@ -56,6 +69,10 @@ func Load() (*Config, error) {
 		SessionIdleTimeout:     duration("CULTIVAR_SESSION_IDLE_TIMEOUT", 12*time.Hour),
 		SessionAbsoluteTimeout: duration("CULTIVAR_SESSION_ABSOLUTE_TIMEOUT", 30*24*time.Hour),
 		CookieSecure:           boolean("CULTIVAR_COOKIE_SECURE", false),
+		Storage: Storage{
+			Driver: strings.ToLower(strings.TrimSpace(env("CULTIVAR_STORAGE_DRIVER", StorageDriverS3))),
+			Path:   env("CULTIVAR_STORAGE_PATH", "./tmp/media"),
+		},
 		S3: S3{
 			Endpoint:  env("CULTIVAR_S3_ENDPOINT", "localhost:9000"),
 			Region:    env("CULTIVAR_S3_REGION", "us-east-1"),
@@ -132,8 +149,17 @@ func (c *Config) validate() error {
 	if c.SessionIdleTimeout >= c.SessionAbsoluteTimeout {
 		return fmt.Errorf("CULTIVAR_SESSION_IDLE_TIMEOUT must be less than CULTIVAR_SESSION_ABSOLUTE_TIMEOUT")
 	}
-	if c.S3.Endpoint == "" || c.S3.Bucket == "" {
-		return fmt.Errorf("CULTIVAR_S3_ENDPOINT and CULTIVAR_S3_BUCKET are required")
+	switch c.Storage.Driver {
+	case StorageDriverS3:
+		if c.S3.Endpoint == "" || c.S3.Bucket == "" {
+			return fmt.Errorf("CULTIVAR_S3_ENDPOINT and CULTIVAR_S3_BUCKET are required")
+		}
+	case StorageDriverFilesystem:
+		if strings.TrimSpace(c.Storage.Path) == "" {
+			return fmt.Errorf("CULTIVAR_STORAGE_PATH is required for the filesystem storage driver")
+		}
+	default:
+		return fmt.Errorf("CULTIVAR_STORAGE_DRIVER must be %q or %q", StorageDriverS3, StorageDriverFilesystem)
 	}
 	if c.IsProduction() && len(c.SecretKey) < 32 {
 		return fmt.Errorf("CULTIVAR_SECRET_KEY must have at least 32 characters in production")

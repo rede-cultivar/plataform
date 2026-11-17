@@ -100,7 +100,7 @@ type FederationService interface {
 type Deps struct {
 	Config       *config.Config
 	DB           *pgxpool.Pool
-	Storage      *storage.Client
+	Storage      storage.Backend
 	Identity     IdentityService
 	Cultivation  CultivationService
 	Practices    PracticeService
@@ -113,7 +113,7 @@ type Deps struct {
 type server struct {
 	cfg          *config.Config
 	db           *pgxpool.Pool
-	storage      *storage.Client
+	storage      storage.Backend
 	identity     IdentityService
 	cultivation  CultivationService
 	practices    PracticeService

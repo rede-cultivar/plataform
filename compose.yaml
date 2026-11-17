@@ -13,6 +13,8 @@ x-app-env: &app-env
   CULTIVAR_SESSION_IDLE_TIMEOUT: ${CULTIVAR_SESSION_IDLE_TIMEOUT:-12h}
   CULTIVAR_SESSION_ABSOLUTE_TIMEOUT: ${CULTIVAR_SESSION_ABSOLUTE_TIMEOUT:-720h}
   CULTIVAR_COOKIE_SECURE: ${CULTIVAR_COOKIE_SECURE:-false}
+  CULTIVAR_STORAGE_DRIVER: ${CULTIVAR_STORAGE_DRIVER:-s3}
+  CULTIVAR_STORAGE_PATH: ${CULTIVAR_STORAGE_PATH:-/data/media}
   CULTIVAR_S3_ENDPOINT: ${CULTIVAR_DOCKER_S3_ENDPOINT:-s3mock:9090}
   CULTIVAR_S3_REGION: ${CULTIVAR_S3_REGION:-us-east-1}
   CULTIVAR_S3_BUCKET: ${CULTIVAR_S3_BUCKET:-cultivar}
@@ -68,6 +70,8 @@ services:
     environment: *app-env
     ports:
       - "127.0.0.1:${CULTIVAR_HTTP_PORT:-8080}:8080"
+    volumes:
+      - media-data:/data/media
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -87,3 +91,4 @@ services:
 
 volumes:
   postgres-data:
+  media-data:

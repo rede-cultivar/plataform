@@ -12,6 +12,28 @@ import (
 	"github.com/rede-cultivar/plataform/internal/platform/config"
 )
 
+// Backend reúne as operações usadas pela aplicação para armazenar objetos.
+type Backend interface {
+	Ensure(ctx context.Context) error
+	Ping(ctx context.Context) error
+	Put(ctx context.Context, key string, r io.Reader, size int64, contentType string) error
+	Get(ctx context.Context, key string) (io.ReadCloser, error)
+	Remove(ctx context.Context, key string) error
+	Location() string
+}
+
+// NewBackend cria o backend de armazenamento configurado.
+func NewBackend(cfg *config.Config) (Backend, error) {
+	switch cfg.Storage.Driver {
+	case config.StorageDriverFilesystem:
+		return NewFilesystem(cfg.Storage.Path)
+	case config.StorageDriverS3, "":
+		return New(cfg.S3)
+	default:
+		return nil, fmt.Errorf("unsupported storage driver %q", cfg.Storage.Driver)
+	}
+}
+
 // Client encapsula o acesso ao armazenamento de objetos compatível com S3.
 type Client struct {
 	mc     *minio.Client
@@ -42,8 +64,8 @@ func New(cfg config.S3) (*Client, error) {
 	}, nil
 }
 
-// EnsureBucket cria o bucket configurado caso ele ainda não exista.
-func (c *Client) EnsureBucket(ctx context.Context) error {
+// Ensure cria o bucket configurado caso ele ainda não exista.
+func (c *Client) Ensure(ctx context.Context) error {
 	exists, err := c.mc.BucketExists(ctx, c.bucket)
 	if err != nil {
 		return fmt.Errorf("check bucket %q: %w", c.bucket, err)
@@ -102,7 +124,7 @@ func (c *Client) Remove(ctx context.Context, key string) error {
 	return nil
 }
 
-// Bucket retorna o nome do bucket configurado.
-func (c *Client) Bucket() string {
+// Location retorna o nome do bucket configurado.
+func (c *Client) Location() string {
 	return c.bucket
 }

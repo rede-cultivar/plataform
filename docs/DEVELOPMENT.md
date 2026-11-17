@@ -51,6 +51,27 @@ endpoint fica em <http://localhost:9000> e aceita as credenciais configuradas em
 Qualquer outro serviço compatível com S3, como MinIO ou um provedor externo, pode
 ser utilizado ajustando as variáveis `CULTIVAR_S3_*`.
 
+### Persistência local para testes
+
+O S3Mock mantém os objetos em memória e perde as mídias quando o container é
+recriado. Para testes locais que precisam manter as imagens entre reinícios, use
+o backend de arquivos:
+
+```sh
+# .env
+CULTIVAR_STORAGE_DRIVER=filesystem
+# Opcional fora do Docker; o padrão é ./tmp/media.
+# CULTIVAR_STORAGE_PATH=./tmp/media
+```
+
+No Compose, o caminho padrão é `/data/media`, montado no volume nomeado
+`media-data`. Assim as mídias sobrevivem a `docker compose restart`, `down` e
+novos `up`. O S3Mock continua disponível e volta a ser usado quando
+`CULTIVAR_STORAGE_DRIVER=s3`, que é o padrão.
+
+O diretório `tmp/` já está no `.gitignore`. Para descartar as mídias locais,
+remova `tmp/media` ou o volume com `make reset`.
+
 ## Contas e sessões
 
 A primeira entrega funcional implementa contas locais com e-mail e senha:
@@ -248,6 +269,8 @@ documenta os valores usados no desenvolvimento local.
 | `CULTIVAR_SESSION_IDLE_TIMEOUT` | `12h` | Prazo de inatividade da sessão |
 | `CULTIVAR_SESSION_ABSOLUTE_TIMEOUT` | `720h` | Prazo absoluto da sessão (30 dias) |
 | `CULTIVAR_COOKIE_SECURE` | `false` | Envia cookies apenas por HTTPS; sempre ativo em produção |
+| `CULTIVAR_STORAGE_DRIVER` | `s3` | Backend de mídia: `s3` ou `filesystem` (teste local) |
+| `CULTIVAR_STORAGE_PATH` | `./tmp/media` | Diretório do backend `filesystem` (no Compose, `/data/media`) |
 | `CULTIVAR_S3_ENDPOINT` | `localhost:9000` | Endpoint S3 (host:porta) |
 | `CULTIVAR_S3_REGION` | `us-east-1` | Região S3 |
 | `CULTIVAR_S3_BUCKET` | `cultivar` | Bucket de mídia |
@@ -274,7 +297,7 @@ internal/
     config/            carregamento e validação de configuração
     database/          pool PostgreSQL
     logging/           logs estruturados
-    storage/           cliente S3
+    storage/           backends de mídia (S3 e filesystem)
   web/                 roteador, handlers, templates e ativos
   worker/              processamento assíncrono
 migrations/            migrações SQL versionadas
