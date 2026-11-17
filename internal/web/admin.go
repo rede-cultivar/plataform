@@ -19,18 +19,13 @@ func (s *server) currentSiteSettings(ctx context.Context) (*sitesettings.Setting
 }
 
 func (s *server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		account := accountFrom(r.Context())
-		if account == nil {
-			http.Redirect(w, r, "/entrar", http.StatusSeeOther)
-			return
-		}
-		if !account.IsAdmin() {
+	return s.requireAccount(func(w http.ResponseWriter, r *http.Request) {
+		if account := accountFrom(r.Context()); account == nil || !account.IsAdmin() {
 			http.Error(w, "operação não permitida", http.StatusForbidden)
 			return
 		}
 		next(w, r)
-	}
+	})
 }
 
 func (s *server) adminSettingsForm(w http.ResponseWriter, r *http.Request) {
@@ -58,7 +53,8 @@ func (s *server) adminSettingsUpdate(w http.ResponseWriter, r *http.Request) {
 		RegistrationsMode:          r.PostFormValue("registrations_mode"),
 		ClosedRegistrationsMessage: r.PostFormValue("closed_registrations_message"),
 	}
-	if _, err := s.siteSettings.Update(r.Context(), input); err != nil {
+	updated, err := s.siteSettings.Update(r.Context(), input)
+	if err != nil {
 		switch {
 		case errors.Is(err, sitesettings.ErrInvalidMode):
 			s.renderAdminSettings(w, r, http.StatusBadRequest, "Selecione um modo de cadastro válido.", &input)
@@ -70,6 +66,11 @@ func (s *server) adminSettingsUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	s.logger.Info("site settings updated",
+		"admin", accountFrom(r.Context()).Person.Handle,
+		"registrations_mode", updated.RegistrationsMode,
+	)
 
 	http.Redirect(w, r, "/admin/settings?updated=1", http.StatusSeeOther)
 }
@@ -111,6 +112,12 @@ func (s *server) updatePendingAccount(w http.ResponseWriter, r *http.Request, ap
 		http.Error(w, "não foi possível atualizar o cadastro", http.StatusInternalServerError)
 		return
 	}
+
+	s.logger.Info("pending account updated",
+		"admin", accountFrom(r.Context()).Person.Handle,
+		"account_id", accountID,
+		"approved", approve,
+	)
 
 	if approve {
 		http.Redirect(w, r, "/admin/settings?approved=1", http.StatusSeeOther)

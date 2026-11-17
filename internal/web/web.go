@@ -98,12 +98,12 @@ type FederationService interface {
 
 // Deps reúne as dependências necessárias para montar o roteador HTTP.
 type Deps struct {
-	Config      *config.Config
-	DB          *pgxpool.Pool
-	Storage     *storage.Client
-	Identity    IdentityService
-	Cultivation CultivationService
-	Practices   PracticeService
+	Config       *config.Config
+	DB           *pgxpool.Pool
+	Storage      *storage.Client
+	Identity     IdentityService
+	Cultivation  CultivationService
+	Practices    PracticeService
 	Media        MediaService
 	Federation   FederationService
 	SiteSettings SiteSettingsService
@@ -212,18 +212,18 @@ func NewRouter(deps Deps) http.Handler {
 	}
 
 	s := &server{
-		cfg:         deps.Config,
-		db:          deps.DB,
-		storage:     deps.Storage,
-		identity:    deps.Identity,
-		cultivation: deps.Cultivation,
-		practices:   deps.Practices,
-		media:       deps.Media,
-		federation:  deps.Federation,
+		cfg:          deps.Config,
+		db:           deps.DB,
+		storage:      deps.Storage,
+		identity:     deps.Identity,
+		cultivation:  deps.Cultivation,
+		practices:    deps.Practices,
+		media:        deps.Media,
+		federation:   deps.Federation,
 		siteSettings: deps.SiteSettings,
-		logger:      deps.Logger,
-		templates:   templates,
-		authLimiter: newRateLimiter(10, 15*time.Minute),
+		logger:       deps.Logger,
+		templates:    templates,
+		authLimiter:  newRateLimiter(10, 15*time.Minute),
 	}
 
 	staticFS, err := fs.Sub(assets, "static")
@@ -309,17 +309,17 @@ func NewRouter(deps Deps) http.Handler {
 func (s *server) newPage(w http.ResponseWriter, r *http.Request) pageData {
 	account := accountFrom(r.Context())
 	data := pageData{
-		InstanceName: s.cfg.InstanceName,
-		Env:          s.cfg.Env,
-		Version:      version.Version,
-		LocalDomain:  s.cfg.LocalDomain,
-		Year:         time.Now().Year(),
-		Account:      account,
-		IsAdmin:      account.IsAdmin(),
-		RegistrationsOpen: true,
-		RegistrationsMode: sitesettings.ModeOpen,
+		InstanceName:              s.cfg.InstanceName,
+		Env:                       s.cfg.Env,
+		Version:                   version.Version,
+		LocalDomain:               s.cfg.LocalDomain,
+		Year:                      time.Now().Year(),
+		Account:                   account,
+		IsAdmin:                   account.IsAdmin(),
+		RegistrationsOpen:         true,
+		RegistrationsMode:         sitesettings.ModeOpen,
 		ClosedRegistrationsNotice: sitesettings.DefaultClosedMessage,
-		CSRFToken:    s.csrfToken(w, r),
+		CSRFToken:                 s.csrfToken(w, r),
 	}
 	if s.siteSettings != nil {
 		settings, err := s.siteSettings.Get(r.Context())

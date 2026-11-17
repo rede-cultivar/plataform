@@ -86,7 +86,9 @@ cultivar admin promote identificador
 O painel permite deixar os cadastros abertos, exigir aprovação administrativa
 ou fechá-los com uma mensagem configurável. Contas pendentes podem ser
 aprovadas ou rejeitadas pela mesma página. O modo fechado também bloqueia o
-`POST /cadastro`, não apenas o formulário, e é refletido no NodeInfo.
+`POST /cadastro`, não apenas o formulário, e é refletido no NodeInfo. A decisão
+está registrada no
+[ADR 0012](decisions/0012-modos-de-cadastro-e-administracao-da-instancia.md).
 
 ## Perfil e identidade federada
 

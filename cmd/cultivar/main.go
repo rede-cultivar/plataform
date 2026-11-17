@@ -115,16 +115,16 @@ func runServe() error {
 	)
 
 	handler := web.NewRouter(web.Deps{
-		Config:      cfg,
-		DB:          db,
-		Storage:     store,
-		Identity:    identity.NewService(db, cfg.SessionIdleTimeout, cfg.SessionAbsoluteTimeout),
-		Cultivation: cultivation.NewService(db),
-		Practices:   practices.NewService(db),
-		Media:       media.NewService(db, store),
-		Federation:  federationService,
+		Config:       cfg,
+		DB:           db,
+		Storage:      store,
+		Identity:     identity.NewService(db, cfg.SessionIdleTimeout, cfg.SessionAbsoluteTimeout),
+		Cultivation:  cultivation.NewService(db),
+		Practices:    practices.NewService(db),
+		Media:        media.NewService(db, store),
+		Federation:   federationService,
 		SiteSettings: sitesettings.NewService(db),
-		Logger:      logger,
+		Logger:       logger,
 	})
 
 	server := &http.Server{

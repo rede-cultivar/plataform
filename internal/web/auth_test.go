@@ -187,7 +187,7 @@ func (f *fakeIdentity) RejectAccount(_ context.Context, accountID string) error 
 }
 
 type fakeSiteSettings struct {
-	settings *sitesettings.Settings
+	settings  *sitesettings.Settings
 	updateErr error
 }
 
@@ -429,8 +429,8 @@ func TestAdminCanUpdateRegistrationSettings(t *testing.T) {
 	adminCookie := &http.Cookie{Name: sessionCookieName, Value: "admin-session"}
 	csrf := csrfFor(t, router, "/", adminCookie)
 	response := postForm(router, "/admin/settings", url.Values{
-		"csrf_token":                    {csrf.Value},
-		"registrations_mode":            {sitesettings.ModeNone},
+		"csrf_token":                   {csrf.Value},
+		"registrations_mode":           {sitesettings.ModeNone},
 		"closed_registrations_message": {"Inscrições temporariamente fechadas."},
 	}, adminCookie, csrf)
 	if response.Code != http.StatusSeeOther || response.Header().Get("Location") != "/admin/settings?updated=1" {

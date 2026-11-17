@@ -2,6 +2,8 @@
 <section class="panel">
   {{if .RegistrationPending}}
     <h1>Cadastro recebido</h1>
+    <p class="muted">A conta ficará disponível depois da aprovação da administração.</p>
+    <p class="muted"><a href="/entrar">Entrar</a> quando a aprovação for concluída.</p>
   {{else if not .RegistrationsOpen}}
     <h1>Cadastros fechados</h1>
     <p>{{.ClosedRegistrationsNotice}}</p>

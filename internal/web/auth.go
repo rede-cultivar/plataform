@@ -149,9 +149,10 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if account.Status == identity.StatusPending {
+		s.authLimiter.reset("register:" + ip)
 		data := s.newPage(w, r)
 		data.RegistrationPending = true
-		data.Notice = "Cadastro enviado. A conta ficará disponível depois da aprovação da administração."
+		data.Notice = "Cadastro enviado. A conta está aguardando aprovação da administração."
 		s.render(w, http.StatusCreated, "register.html", data)
 		return
 	}
