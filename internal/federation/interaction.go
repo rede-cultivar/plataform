@@ -17,6 +17,12 @@ import (
 // atividade malformada ocupe espaço desproporcional na página do registro.
 const maxInteractionContent = 4000
 
+// MaxReplyContent limita o texto de uma resposta publicada pelo Cultivar.
+const MaxReplyContent = 2000
+
+// ErrInvalidReply indica que o texto da resposta está vazio ou é longo demais.
+var ErrInvalidReply = errors.New("resposta inválida")
+
 // InteractionKind identifica o tipo de interação recebida.
 type InteractionKind string
 
@@ -37,6 +43,7 @@ type Interaction struct {
 	ID          string
 	EntryID     string
 	Kind        InteractionKind
+	Direction   string
 	ActivityID  string
 	ObjectID    string
 	ActorID     string
@@ -44,10 +51,17 @@ type Interaction struct {
 	ActorName   string
 	ActorURL    string
 	ActorAvatar string
+	ActorInbox  string
 	InReplyTo   string
+	ParentID    string
 	Content     string
 	PublishedAt *time.Time
 	CreatedAt   time.Time
+}
+
+// Local informa se a resposta foi publicada a partir do Cultivar.
+func (i Interaction) Local() bool {
+	return i.Direction == "outbound"
 }
 
 // ActorLabel escolhe o nome exibível do autor da interação.
@@ -338,6 +352,7 @@ func (s *Service) handleReply(ctx context.Context, personID string, remote *Remo
 	reply := Interaction{
 		EntryID:     entryID,
 		Kind:        InteractionReply,
+		Direction:   "inbound",
 		ActivityID:  activity.ID,
 		ObjectID:    payload.ObjectID,
 		ActorID:     remote.ID,
@@ -345,7 +360,9 @@ func (s *Service) handleReply(ctx context.Context, personID string, remote *Remo
 		ActorName:   remote.Name,
 		ActorURL:    remoteProfileURL(remote),
 		ActorAvatar: remote.Icon.URL,
+		ActorInbox:  remote.InboxURL(),
 		InReplyTo:   payload.InReplyTo,
+		ParentID:    payload.InReplyTo,
 		Content:     payload.Content,
 		PublishedAt: payload.PublishedAt,
 	}

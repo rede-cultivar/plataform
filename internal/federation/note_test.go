@@ -337,6 +337,71 @@ func TestNewDelete(t *testing.T) {
 	}
 }
 
+func TestNewReplyNote(t *testing.T) {
+	urls := NewURLs("https://cultivar.example")
+	target := ReplyTarget{
+		ActorID:     "https://remote.example/users/bob",
+		ActorHandle: "bob",
+		ActorURL:    "https://remote.example/@bob",
+		ObjectID:    "https://remote.example/notes/1",
+	}
+	published := time.Date(2026, 11, 18, 10, 30, 0, 0, time.UTC)
+
+	note := NewReplyNote(urls, testPerson(), testEntry(), "reply-1", target, "Obrigada!\nAbraço", published)
+
+	if note.ID != "https://cultivar.example/respostas/reply-1" {
+		t.Errorf("ID = %q", note.ID)
+	}
+	if note.InReplyTo != target.ObjectID {
+		t.Errorf("InReplyTo = %q, want %q", note.InReplyTo, target.ObjectID)
+	}
+	if note.URL != "https://cultivar.example/diario/cycle-1#registro-entry-1" {
+		t.Errorf("URL = %q", note.URL)
+	}
+	if note.Published != "2026-11-18T10:30:00Z" {
+		t.Errorf("Published = %q", note.Published)
+	}
+	if len(note.To) != 1 || note.To[0] != PublicCollection {
+		t.Errorf("To = %v, want public collection", note.To)
+	}
+	if len(note.CC) != 2 || note.CC[0] != urls.Followers(testPerson().ID) || note.CC[1] != target.ActorID {
+		t.Errorf("CC = %v, want followers and replied actor", note.CC)
+	}
+	if len(note.Tag) != 1 {
+		t.Fatalf("Tag = %v, want one mention", note.Tag)
+	}
+	if note.Tag[0].Type != "Mention" || note.Tag[0].Href != target.ActorID || note.Tag[0].Name != "@bob@remote.example" {
+		t.Errorf("Tag = %+v", note.Tag[0])
+	}
+	if !strings.Contains(note.Content, `href="https://remote.example/@bob"`) {
+		t.Errorf("Content = %q, want mention link", note.Content)
+	}
+	if !strings.Contains(note.Content, "@bob@remote.example") {
+		t.Errorf("Content = %q, want mention name", note.Content)
+	}
+	if !strings.Contains(note.Content, "Obrigada!<br>Abraço") {
+		t.Errorf("Content = %q, want escaped line break", note.Content)
+	}
+}
+
+func TestNewReplyNoteEscapesContent(t *testing.T) {
+	urls := NewURLs("https://cultivar.example")
+	target := ReplyTarget{
+		ActorID:     "https://remote.example/users/bob",
+		ActorHandle: "bob",
+		ObjectID:    "https://remote.example/notes/1",
+	}
+
+	note := NewReplyNote(urls, testPerson(), testEntry(), "reply-1", target, `<script>alert("x")</script>`, time.Now())
+
+	if strings.Contains(note.Content, "<script>") {
+		t.Errorf("Content = %q, want escaped HTML", note.Content)
+	}
+	if !strings.Contains(note.Content, "&lt;script&gt;") {
+		t.Errorf("Content = %q, want escaped script tag", note.Content)
+	}
+}
+
 func TestNewActivityIDIsOpaqueAndUnique(t *testing.T) {
 	first, err := newActivityID()
 	if err != nil {

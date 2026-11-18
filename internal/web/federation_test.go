@@ -31,8 +31,13 @@ type fakeFederation struct {
 	profilesErr      error
 	interactions     map[string]federation.EntryInteractions
 	activities       map[string]json.RawMessage
+	replyNotes       map[string]federation.Note
 	inboxErr         error
 	inboxCalls       int
+	replyCalls       int
+	lastReplyID      string
+	lastReplyContent string
+	replyErr         error
 	updateCalls      int
 	lastUpdate       cultivation.Entry
 	lastUpdateCycle  cultivation.Cycle
@@ -53,6 +58,7 @@ func newFakeFederation(t *testing.T) *fakeFederation {
 		base:       "http://localhost:8080",
 		key:        key,
 		activities: make(map[string]json.RawMessage),
+		replyNotes: make(map[string]federation.Note),
 	}
 }
 
@@ -109,11 +115,38 @@ func (f *fakeFederation) EntryInteractions(_ context.Context, entryIDs []string)
 	return result, nil
 }
 
+func (f *fakeFederation) ReplyToInteraction(_ context.Context, person identity.Person, _ cultivation.Cycle, entry cultivation.Entry, replyID, content string) (*federation.Interaction, error) {
+	f.replyCalls++
+	f.lastReplyID = replyID
+	f.lastReplyContent = content
+	if f.replyErr != nil {
+		return nil, f.replyErr
+	}
+
+	published := time.Now()
+	return &federation.Interaction{
+		EntryID:     entry.ID,
+		Kind:        federation.InteractionReply,
+		Direction:   "outbound",
+		ActorHandle: person.Handle,
+		ActorName:   person.DisplayName,
+		Content:     content,
+		PublishedAt: &published,
+	}, nil
+}
+
+func (f *fakeFederation) FindReplyNote(_ context.Context, replyID string) (federation.Note, error) {
+	note, ok := f.replyNotes[replyID]
+	if !ok {
+		return federation.Note{}, federation.ErrNotFound
+	}
+	return note, nil
+}
+
 func (f *fakeFederation) HandleInbox(_ context.Context, _ string, _ *http.Request) error {
 	f.inboxCalls++
 	return f.inboxErr
 }
-
 func (f *fakeFederation) FindActivity(_ context.Context, activityID string) (json.RawMessage, error) {
 	payload, ok := f.activities[activityID]
 	if !ok {
@@ -668,5 +701,47 @@ func TestAccountFollowersReportsServiceError(t *testing.T) {
 	}
 	if body := response.Body.String(); !strings.Contains(body, "Não foi possível carregar os seguidores.") {
 		t.Errorf("body does not contain the error message")
+	}
+}
+
+func TestReplyNoteServesStoredNote(t *testing.T) {
+	service := newFakeFederation(t)
+	service.replyNotes["reply-1"] = federation.Note{
+		ID:        "http://localhost:8080/respostas/reply-1",
+		Type:      "Note",
+		InReplyTo: "https://remote.example/notes/1",
+		Content:   "<p>Obrigada!</p>",
+	}
+
+	router := newFederationContentRouter(t, newFakeIdentity(), nil, nil, service)
+	request := httptest.NewRequest(http.MethodGet, "/respostas/reply-1", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "application/activity+json") {
+		t.Errorf("Content-Type = %q", contentType)
+	}
+
+	var note federation.Note
+	decodeJSON(t, response, &note)
+	if note.ID != "http://localhost:8080/respostas/reply-1" {
+		t.Errorf("ID = %q", note.ID)
+	}
+	if note.InReplyTo != "https://remote.example/notes/1" {
+		t.Errorf("InReplyTo = %q", note.InReplyTo)
+	}
+}
+
+func TestReplyNoteReturnsNotFound(t *testing.T) {
+	router := newFederationContentRouter(t, newFakeIdentity(), nil, nil, newFakeFederation(t))
+	request := httptest.NewRequest(http.MethodGet, "/respostas/desconhecida", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
 	}
 }

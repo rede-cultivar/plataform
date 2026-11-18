@@ -119,17 +119,31 @@
               </p>
 
               {{if $interactions.Replies}}
-                <h3>Respostas do Fediverso</h3>
+                <h3>Respostas</h3>
                 <ol class="replies">
                   {{range $interactions.Replies}}
-                    <li class="reply">
+                    <li class="reply{{if .Local}} reply-local{{end}}">
                       <p class="reply-meta">
                         {{if .ActorURL}}<a href="{{.ActorURL}}" rel="noopener noreferrer nofollow" target="_blank">{{end}}
                           <strong>{{.ActorLabel}}</strong>
                         {{if .ActorURL}}</a>{{end}}
+                        {{if .Local}}<span class="tag">Sua resposta</span>{{end}}
                         {{with .PublishedLabel}}<span class="muted">· {{.}}</span>{{end}}
                       </p>
                       {{if .Content}}<p class="reply-content">{{.Content}}</p>{{end}}
+
+                      {{if and $.CanEdit (not .Local)}}
+                        <details class="reply-form">
+                          <summary>Responder</summary>
+                          <form method="post" action="/diario/{{$.Cycle.ID}}/registros/{{$entryID}}/respostas">
+                            <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                            <input type="hidden" name="reply_id" value="{{.ID}}">
+                            <label for="resposta-{{.ID}}">Sua resposta</label>
+                            <textarea id="resposta-{{.ID}}" name="content" rows="3" maxlength="{{$.MaxReplyContent}}" required></textarea>
+                            <button type="submit" class="button button-small">Enviar resposta</button>
+                          </form>
+                        </details>
+                      {{end}}
                     </li>
                   {{end}}
                 </ol>

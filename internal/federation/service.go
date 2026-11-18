@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -241,6 +242,120 @@ func (s *Service) publishCreate(ctx context.Context, person identity.Person, not
 	}
 
 	return s.enqueueFollowers(ctx, person.ID, activityDBID)
+}
+
+// ReplyToInteraction publica uma resposta a uma mensagem recebida.
+//
+// A resposta é uma Note própria, com inReplyTo apontando para a mensagem remota
+// e uma menção ao seu autor. A atividade Create é persistida e entregue ao inbox
+// de quem respondeu e aos seguidores, seguindo o mesmo caminho das publicações
+// de registros.
+func (s *Service) ReplyToInteraction(
+	ctx context.Context,
+	person identity.Person,
+	cycle cultivation.Cycle,
+	entry cultivation.Entry,
+	replyID, content string,
+) (*Interaction, error) {
+	content = strings.TrimSpace(content)
+	if content == "" || utf8.RuneCountInString(content) > MaxReplyContent {
+		return nil, ErrInvalidReply
+	}
+	if entry.AuthorID != person.ID || entry.EffectiveVisibility(&cycle) != cultivation.VisibilityPublic {
+		return nil, ErrNotFound
+	}
+	if _, err := s.ActorKey(ctx, person.ID); err != nil {
+		return nil, err
+	}
+
+	parent, err := s.store.FindReply(ctx, person.ID, entry.ID, replyID)
+	if err != nil {
+		return nil, err
+	}
+
+	noteID, err := newActivityID()
+	if err != nil {
+		return nil, err
+	}
+	activityID, err := newActivityID()
+	if err != nil {
+		return nil, err
+	}
+
+	published := s.now().UTC()
+	target := ReplyTarget{
+		ActorID:     parent.ActorID,
+		ActorHandle: parent.ActorHandle,
+		ActorURL:    parent.ActorURL,
+		ObjectID:    parent.ObjectID,
+	}
+	note := NewReplyNote(s.urls, person, entry, noteID, target, content, published)
+	create := NewCreate(s.urls, person, note, activityID)
+
+	payload, err := json.Marshal(create)
+	if err != nil {
+		return nil, fmt.Errorf("codificar atividade Create: %w", err)
+	}
+
+	activityDBID, inserted, err := s.store.InsertActivity(
+		ctx, person.ID, create.ID, "Create", note.ID, payload, "public", "outbound",
+	)
+	if err != nil {
+		return nil, err
+	}
+	if !inserted {
+		return nil, ErrInvalidReply
+	}
+
+	local := Interaction{
+		EntryID:     entry.ID,
+		Kind:        InteractionReply,
+		Direction:   "outbound",
+		ActivityID:  create.ID,
+		ObjectID:    note.ID,
+		ActorID:     s.urls.Actor(person.ID),
+		ActorHandle: person.Handle,
+		ActorName:   person.DisplayName,
+		ActorURL:    s.urls.Profile(person.Handle),
+		InReplyTo:   parent.ObjectID,
+		ParentID:    parent.ObjectID,
+		Content:     content,
+		PublishedAt: &published,
+	}
+	if err := s.store.InsertOutboundReply(ctx, person.ID, entry.ID, local); err != nil {
+		return nil, err
+	}
+
+	inbox := parent.ActorInbox
+	if inbox == "" {
+		if actor, fetchErr := fetchActorDocument(ctx, s.client, parent.ActorID); fetchErr == nil {
+			inbox = actor.InboxURL()
+		} else {
+			s.logger.Warn("fetch replied actor inbox", "actor", parent.ActorID, "error", fetchErr)
+		}
+	}
+	if err := s.store.EnqueueDelivery(ctx, activityDBID, inbox); err != nil {
+		s.logger.Warn("enqueue reply delivery", "actor", parent.ActorID, "error", err)
+	}
+	if err := s.enqueueFollowers(ctx, person.ID, activityDBID); err != nil {
+		s.logger.Warn("enqueue reply followers", "entry", entry.ID, "error", err)
+	}
+
+	return &local, nil
+}
+
+// FindReplyNote devolve a Note pública de uma resposta publicada pelo Cultivar.
+func (s *Service) FindReplyNote(ctx context.Context, replyID string) (Note, error) {
+	payload, err := s.store.FindPublicReplyObject(ctx, s.urls.ReplyNote(replyID))
+	if err != nil {
+		return Note{}, err
+	}
+
+	var create Create
+	if err := json.Unmarshal(payload, &create); err != nil {
+		return Note{}, fmt.Errorf("interpretar resposta publicada: %w", err)
+	}
+	return create.Object, nil
 }
 
 // enqueueFollowers agenda a atividade para todos os seguidores aceitos.

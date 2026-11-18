@@ -281,6 +281,28 @@ func (s *server) note(w http.ResponseWriter, r *http.Request) {
 	writeJSONType(w, http.StatusOK, federation.ActivityContentType, note)
 }
 
+// replyNote publica a representação ActivityPub de uma resposta do Cultivar.
+func (s *server) replyNote(w http.ResponseWriter, r *http.Request) {
+	if s.federation == nil {
+		http.Error(w, "resposta não encontrada", http.StatusNotFound)
+		return
+	}
+
+	note, err := s.federation.FindReplyNote(r.Context(), chi.URLParam(r, "id"))
+	if errors.Is(err, federation.ErrNotFound) {
+		http.Error(w, "resposta não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find federation reply note", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	writeJSONType(w, http.StatusOK, federation.ActivityContentType, note)
+}
+
 // activity devolve uma atividade pública já publicada.
 func (s *server) activity(w http.ResponseWriter, r *http.Request) {
 	if s.federation == nil {

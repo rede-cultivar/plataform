@@ -399,6 +399,13 @@ Fluxo implementado:
   atualizam a existente. As interações aparecem na página do ciclo, junto ao
   registro, com contadores e respostas. `Delete` de uma conta remove também suas
   interações.
+- **Respostas enviadas:** o dono do ciclo pode responder a uma mensagem recebida
+  na própria página do registro. A resposta é uma `Note` em `/respostas/{id}`,
+  com `inReplyTo` apontando para a mensagem original, menção ao autor e entrega
+  ao inbox de quem respondeu e aos seguidores. Ela é persistida em
+  `federation_replies` com `direction = 'outbound'` e aparece no mesmo fio,
+  identificada como resposta local. A Note só é servida enquanto o registro
+  continuar público.
 - **Outbox:** a coleção lista apenas atividades `Create` públicas. Atividades de
   controle, como `Accept`, não são publicações e não entram no `totalItems`, que
   outras instâncias usam como contagem de publicações.
@@ -413,8 +420,9 @@ Fluxo implementado:
   testes com instâncias locais.
 
 O esquema está nas migrações `00004_federation.sql` (`actor_keys`,
-`federation_follows`, `federation_activities` e `federation_deliveries`) e
-`00006_interactions.sql` (`federation_replies` e `federation_reactions`).
+`federation_follows`, `federation_activities` e `federation_deliveries`),
+`00006_interactions.sql` (`federation_replies` e `federation_reactions`) e
+`00007_reply_outbound.sql` (respostas enviadas e inbox do autor respondido).
 
 Para validar com uma instância real, a instância precisa ser acessível
 publicamente por HTTPS. Configure `CULTIVAR_LOCAL_DOMAIN` com a URL pública

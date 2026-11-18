@@ -217,6 +217,39 @@ func (s *Store) FindActivity(ctx context.Context, activityID string) (*ActivityR
 	return activity, nil
 }
 
+// FindPublicReplyObject devolve o payload da publicação de saída de uma
+// resposta cujo registro ainda pode ser federado.
+//
+// A consulta cruza a resposta com o registro e o ciclo para não servir uma Note
+// pública depois que o registro deixou de ser público. O payload é exatamente o
+// documento distribuído aos seguidores.
+func (s *Store) FindPublicReplyObject(ctx context.Context, objectID string) (json.RawMessage, error) {
+	var payload json.RawMessage
+	err := s.db.QueryRow(ctx, `
+		SELECT a.payload
+		FROM federation_activities a
+		JOIN federation_replies r ON r.object_id = a.object_id
+		JOIN cultivation_entries e ON e.id = r.entry_id
+		JOIN cultivation_cycles c ON c.id = e.cycle_id
+		WHERE a.object_id = $1
+		  AND a.direction = 'outbound'
+		  AND a.visibility = 'public'
+		  AND a.activity_type = 'Create'
+		  AND r.direction = 'outbound'
+		  AND c.visibility = 'public'
+		  AND e.visibility IN ('inherit', 'public')
+		ORDER BY a.created_at DESC
+		LIMIT 1
+	`, objectID).Scan(&payload)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
 // LatestObjectActivityType devolve o tipo da atividade de saída mais recente
 // que se refere a um objeto, ou vazio quando o objeto nunca foi publicado.
 func (s *Store) LatestObjectActivityType(ctx context.Context, personID, objectID string) (string, error) {

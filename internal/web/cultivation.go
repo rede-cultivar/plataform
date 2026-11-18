@@ -4,15 +4,48 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
+	"github.com/rede-cultivar/plataform/internal/federation"
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/practices"
 )
+
+// replyErrorQuery identifica o motivo de uma resposta não publicada.
+const replyErrorQuery = "erro_resposta"
+
+// replyErrorMessage traduz o código da URL em uma mensagem para a pessoa.
+func replyErrorMessage(code string) string {
+	switch code {
+	case "vazia":
+		return "Escreva uma resposta antes de enviar."
+	case "longa":
+		return "A resposta deve ter no máximo 2000 caracteres."
+	case "origem":
+		return "A mensagem original não está mais disponível."
+	case "publico":
+		return "Só é possível responder a registros públicos."
+	case "indisponivel":
+		return "Não foi possível publicar a resposta. Tente novamente."
+	default:
+		return ""
+	}
+}
+
+// entryAnchor devolve o endereço do registro, opcionalmente com um aviso.
+func entryAnchor(cycleID, entryID, errorCode string) string {
+	target := "/diario/" + cycleID
+	if errorCode != "" {
+		target += "?" + replyErrorQuery + "=" + errorCode
+	}
+	return target + "#registro-" + entryID
+}
 
 // diary exibe a descoberta pública de ciclos de cultivo.
 func (s *server) diary(w http.ResponseWriter, r *http.Request) {
@@ -144,6 +177,7 @@ func (s *server) cycleShow(w http.ResponseWriter, r *http.Request) {
 	data.Cycle = cycle
 	data.Entries = entries
 	data.CanEdit = cycle.IsOwner(viewerID)
+	data.Error = replyErrorMessage(r.URL.Query().Get(replyErrorQuery))
 
 	if s.media != nil && len(entries) > 0 {
 		ids := make([]string, len(entries))
@@ -662,6 +696,95 @@ func (s *server) entryEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/diario/"+cycleID+"#registro-"+updated.ID, http.StatusSeeOther)
+}
+
+// entryReply publica uma resposta a uma mensagem recebida no Fediverso.
+//
+// Só o dono do ciclo pode responder e apenas em registros ainda públicos. A
+// resposta é persistida e entregue de forma assíncrona pelo worker.
+func (s *server) entryReply(w http.ResponseWriter, r *http.Request) {
+	account := accountFrom(r.Context())
+	if account == nil {
+		http.Error(w, "conta não encontrada", http.StatusUnauthorized)
+		return
+	}
+	if s.cultivation == nil || s.federation == nil {
+		http.Error(w, "respostas indisponíveis", http.StatusServiceUnavailable)
+		return
+	}
+	if !s.parseForm(w, r) {
+		return
+	}
+
+	cycleID := chi.URLParam(r, "cycleID")
+	entryID := chi.URLParam(r, "entryID")
+
+	cycle, _, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, cycleID)
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find cycle for reply", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !cycle.IsOwner(account.Person.ID) {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+	if !s.validateCSRF(r) {
+		http.Error(w, "Sessão do formulário expirada. Tente novamente.", http.StatusForbidden)
+		return
+	}
+
+	entry, err := s.cultivation.FindEntry(r.Context(), entryID)
+	if errors.Is(err, cultivation.ErrNotFound) {
+		http.Error(w, "registro não encontrado", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find entry for reply", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if entry.CycleID != cycle.ID {
+		http.Error(w, "operação não permitida", http.StatusForbidden)
+		return
+	}
+	if entry.EffectiveVisibility(cycle) != cultivation.VisibilityPublic {
+		http.Redirect(w, r, entryAnchor(cycleID, entryID, "publico"), http.StatusSeeOther)
+		return
+	}
+
+	content := strings.TrimSpace(r.PostFormValue("content"))
+	if content == "" {
+		http.Redirect(w, r, entryAnchor(cycleID, entryID, "vazia"), http.StatusSeeOther)
+		return
+	}
+	if utf8.RuneCountInString(content) > federation.MaxReplyContent {
+		http.Redirect(w, r, entryAnchor(cycleID, entryID, "longa"), http.StatusSeeOther)
+		return
+	}
+
+	replyID := strings.TrimSpace(r.PostFormValue("reply_id"))
+	_, err = s.federation.ReplyToInteraction(
+		r.Context(), account.Person, *cycle, *entry, replyID, content,
+	)
+	switch {
+	case errors.Is(err, federation.ErrNotFound):
+		http.Redirect(w, r, entryAnchor(cycleID, entryID, "origem"), http.StatusSeeOther)
+		return
+	case errors.Is(err, federation.ErrInvalidReply):
+		http.Redirect(w, r, entryAnchor(cycleID, entryID, "vazia"), http.StatusSeeOther)
+		return
+	case err != nil:
+		s.logger.Warn("publish entry reply", "entry", entryID, "error", err)
+		http.Redirect(w, r, entryAnchor(cycleID, entryID, "indisponivel"), http.StatusSeeOther)
+		return
+	}
+
+	http.Redirect(w, r, entryAnchor(cycleID, entryID, ""), http.StatusSeeOther)
 }
 
 // publishEntryUpdate redistribui uma publicação após alterações no registro.

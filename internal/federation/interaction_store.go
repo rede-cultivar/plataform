@@ -37,16 +37,25 @@ func (s *Store) PublicEntryOwner(ctx context.Context, entryID string) (string, e
 // O object_id é a Note remota e funciona como chave de idempotência: uma
 // reentrega do Create atualiza a mesma linha em vez de duplicar a resposta.
 func (s *Store) UpsertReply(ctx context.Context, personID, entryID string, reply Interaction) error {
+	direction := reply.Direction
+	if direction == "" {
+		direction = "inbound"
+	}
+	parentID := reply.ParentID
+	if parentID == "" {
+		parentID = reply.InReplyTo
+	}
+
 	_, err := s.db.Exec(ctx, `
 		INSERT INTO federation_replies (
-			person_id, entry_id, activity_id, object_id, actor_id,
-			actor_handle, actor_name, actor_url, actor_avatar,
-			in_reply_to, content, published_at
+			person_id, entry_id, direction, activity_id, object_id, actor_id,
+			actor_handle, actor_name, actor_url, actor_avatar, actor_inbox,
+			in_reply_to, parent_object_id, content, published_at
 		)
 		VALUES (
-			$1::uuid, $2::uuid, $3, $4, $5,
-			$6, $7, $8, $9,
-			$10, $11, $12
+			$1::uuid, $2::uuid, $3, $4, $5, $6,
+			$7, $8, $9, $10, $11,
+			$12, $13, $14, $15
 		)
 		ON CONFLICT (object_id) DO UPDATE
 		SET activity_id = EXCLUDED.activity_id,
@@ -54,14 +63,92 @@ func (s *Store) UpsertReply(ctx context.Context, personID, entryID string, reply
 		    actor_name = EXCLUDED.actor_name,
 		    actor_url = EXCLUDED.actor_url,
 		    actor_avatar = EXCLUDED.actor_avatar,
+		    actor_inbox = EXCLUDED.actor_inbox,
 		    in_reply_to = EXCLUDED.in_reply_to,
+		    parent_object_id = EXCLUDED.parent_object_id,
 		    content = EXCLUDED.content,
 		    published_at = EXCLUDED.published_at,
 		    updated_at = now()
-	`, personID, entryID, reply.ActivityID, reply.ObjectID, reply.ActorID,
-		reply.ActorHandle, reply.ActorName, reply.ActorURL, reply.ActorAvatar,
-		reply.InReplyTo, reply.Content, reply.PublishedAt)
+	`, personID, entryID, direction, reply.ActivityID, reply.ObjectID, reply.ActorID,
+		reply.ActorHandle, reply.ActorName, reply.ActorURL, reply.ActorAvatar, reply.ActorInbox,
+		reply.InReplyTo, parentID, reply.Content, reply.PublishedAt)
 	return err
+}
+
+// InsertOutboundReply grava uma resposta publicada por uma pessoa local.
+//
+// O object_id é a URL /respostas/{id} e identifica a Note de saída. A inserção
+// não sobrescreve uma linha existente: o identificador é opaco e gerado antes da
+// publicação.
+func (s *Store) InsertOutboundReply(ctx context.Context, personID, entryID string, reply Interaction) error {
+	_, err := s.db.Exec(ctx, `
+		INSERT INTO federation_replies (
+			person_id, entry_id, direction, activity_id, object_id, actor_id,
+			actor_handle, actor_name, actor_url, actor_avatar, actor_inbox,
+			in_reply_to, parent_object_id, content, published_at
+		)
+		VALUES (
+			$1::uuid, $2::uuid, 'outbound', $3, $4, $5,
+			$6, $7, $8, '', '',
+			$9, $10, $11, $12
+		)
+		ON CONFLICT (object_id) DO NOTHING
+	`, personID, entryID, reply.ActivityID, reply.ObjectID, reply.ActorID,
+		reply.ActorHandle, reply.ActorName, reply.ActorURL,
+		reply.InReplyTo, reply.ParentID, reply.Content, reply.PublishedAt)
+	return err
+}
+
+// ReplyRecord reúne os dados de uma resposta usados para publicar uma nova
+// mensagem no mesmo fio.
+type ReplyRecord struct {
+	ID          string
+	EntryID     string
+	Direction   string
+	ObjectID    string
+	ActorID     string
+	ActorHandle string
+	ActorName   string
+	ActorURL    string
+	ActorInbox  string
+	InReplyTo   string
+}
+
+// FindReply busca a resposta recebida que será respondida.
+//
+// A consulta exige que a linha pertença à pessoa e ao registro informados e que
+// tenha vindo do Fediverso, evitando que uma resposta local seja usada como
+// origem de outra resposta.
+func (s *Store) FindReply(ctx context.Context, personID, entryID, replyID string) (*ReplyRecord, error) {
+	var record ReplyRecord
+	err := s.db.QueryRow(ctx, `
+		SELECT
+			id::text, entry_id::text, direction, object_id, actor_id,
+			actor_handle, actor_name, actor_url, actor_inbox, in_reply_to
+		FROM federation_replies
+		WHERE id::text = $1
+		  AND person_id = $2::uuid
+		  AND entry_id = $3::uuid
+		  AND direction = 'inbound'
+	`, replyID, personID, entryID).Scan(
+		&record.ID,
+		&record.EntryID,
+		&record.Direction,
+		&record.ObjectID,
+		&record.ActorID,
+		&record.ActorHandle,
+		&record.ActorName,
+		&record.ActorURL,
+		&record.ActorInbox,
+		&record.InReplyTo,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &record, nil
 }
 
 // UpdateReply atualiza o texto de uma resposta já conhecida.
@@ -193,9 +280,9 @@ func (s *Store) ListEntryInteractions(ctx context.Context, entryIDs []string) (m
 func (s *Store) listReplies(ctx context.Context, entryIDs []string) ([]Interaction, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT
-			id::text, entry_id::text, activity_id, object_id, actor_id,
-			actor_handle, actor_name, actor_url, actor_avatar,
-			in_reply_to, content, published_at, created_at
+			id::text, entry_id::text, direction, activity_id, object_id, actor_id,
+			actor_handle, actor_name, actor_url, actor_avatar, actor_inbox,
+			in_reply_to, parent_object_id, content, published_at, created_at
 		FROM federation_replies
 		WHERE entry_id = ANY($1::uuid[])
 		ORDER BY COALESCE(published_at, created_at), created_at
@@ -212,6 +299,7 @@ func (s *Store) listReplies(ctx context.Context, entryIDs []string) ([]Interacti
 		if err := rows.Scan(
 			&reply.ID,
 			&reply.EntryID,
+			&reply.Direction,
 			&reply.ActivityID,
 			&reply.ObjectID,
 			&reply.ActorID,
@@ -219,7 +307,9 @@ func (s *Store) listReplies(ctx context.Context, entryIDs []string) ([]Interacti
 			&reply.ActorName,
 			&reply.ActorURL,
 			&reply.ActorAvatar,
+			&reply.ActorInbox,
 			&reply.InReplyTo,
+			&reply.ParentID,
 			&reply.Content,
 			&publishedAt,
 			&reply.CreatedAt,

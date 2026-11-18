@@ -67,6 +67,14 @@ func (u URLs) Note(id string) string {
 	return u.base + "/notas/" + url.PathEscape(id)
 }
 
+// ReplyNote retorna a URL canônica de uma resposta publicada pelo Cultivar.
+//
+// O namespace é separado de /notas para que um identificador de resposta nunca
+// seja confundido com o identificador de um registro de cultivo.
+func (u URLs) ReplyNote(id string) string {
+	return u.base + "/respostas/" + url.PathEscape(id)
+}
+
 // Entry retorna a página pública de um registro de cultivo.
 func (u URLs) Entry(cycleID, entryID string) string {
 	return u.base + "/diario/" + url.PathEscape(cycleID) + "#registro-" + url.PathEscape(entryID)

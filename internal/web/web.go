@@ -95,6 +95,8 @@ type FederationService interface {
 	Followers(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	FollowerProfiles(ctx context.Context, personID string) ([]federation.Follower, error)
 	EntryInteractions(ctx context.Context, entryIDs []string) (map[string]federation.EntryInteractions, error)
+	ReplyToInteraction(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, replyID, content string) (*federation.Interaction, error)
+	FindReplyNote(ctx context.Context, replyID string) (federation.Note, error)
 	HandleInbox(ctx context.Context, personID string, r *http.Request) error
 	FindActivity(ctx context.Context, activityID string) (json.RawMessage, error)
 }
@@ -141,6 +143,8 @@ type pageData struct {
 	CSRFToken string
 	Error     string
 	Notice    string
+
+	MaxReplyContent int
 
 	IsAdmin                    bool
 	RegistrationsOpen          bool
@@ -275,6 +279,7 @@ func NewRouter(deps Deps) http.Handler {
 	router.Get("/diario/{cycleID}/registros/{entryID}/editar", s.requireAccount(s.entryEditForm))
 	router.Post("/diario/{cycleID}/registros/{entryID}/editar", s.requireAccount(s.entryEdit))
 	router.Post("/diario/{cycleID}/registros/{entryID}/fotos/{mediaID}/apagar", s.requireAccount(s.entryPhotoDelete))
+	router.Post("/diario/{cycleID}/registros/{entryID}/respostas", s.requireAccount(s.entryReply))
 	router.Get("/diario/{id}", s.cycleShow)
 
 	router.Get("/media/{id}", s.mediaAsset)
@@ -300,6 +305,7 @@ func NewRouter(deps Deps) http.Handler {
 	router.Post("/actors/{id}/inbox", s.inbox)
 
 	router.Get("/notas/{id}", s.note)
+	router.Get("/respostas/{id}", s.replyNote)
 	router.Get("/activities/{id}", s.activity)
 
 	router.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
@@ -325,6 +331,7 @@ func (s *server) newPage(w http.ResponseWriter, r *http.Request) pageData {
 		RegistrationsMode:         sitesettings.ModeOpen,
 		ClosedRegistrationsNotice: sitesettings.DefaultClosedMessage,
 		CSRFToken:                 s.csrfToken(w, r),
+		MaxReplyContent:           federation.MaxReplyContent,
 	}
 	if s.siteSettings != nil {
 		settings, err := s.siteSettings.Get(r.Context())

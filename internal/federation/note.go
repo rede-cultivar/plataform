@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -27,6 +28,13 @@ type Attachment struct {
 	Height    int    `json:"height,omitempty"`
 }
 
+// Tag representa uma menção ou outro marcador de uma Note.
+type Tag struct {
+	Type string `json:"type"`
+	Href string `json:"href"`
+	Name string `json:"name,omitempty"`
+}
+
 // Note representa um registro de cultivo publicado no Fediverso.
 type Note struct {
 	Context      []string     `json:"@context"`
@@ -36,9 +44,11 @@ type Note struct {
 	Content      string       `json:"content"`
 	Published    string       `json:"published"`
 	Updated      string       `json:"updated,omitempty"`
+	InReplyTo    string       `json:"inReplyTo,omitempty"`
 	URL          string       `json:"url"`
 	To           []string     `json:"to"`
 	CC           []string     `json:"cc,omitempty"`
+	Tag          []Tag        `json:"tag,omitempty"`
 	Attachment   []Attachment `json:"attachment,omitempty"`
 }
 
@@ -125,6 +135,86 @@ func NewEntryNote(urls URLs, person identity.Person, cycle cultivation.Cycle, en
 	}
 
 	return note
+}
+
+// ReplyTarget descreve a mensagem remota que será respondida.
+type ReplyTarget struct {
+	ActorID     string
+	ActorHandle string
+	ActorURL    string
+	ObjectID    string
+}
+
+// NewReplyNote monta a Note de uma resposta publicada a partir do Cultivar.
+//
+// A resposta cita o autor da mensagem original, aponta inReplyTo para a Note
+// remota e é endereçada ao público, aos seguidores e à pessoa respondida. O
+// campo url leva à página do registro, onde a conversa aparece reunida.
+func NewReplyNote(
+	urls URLs,
+	person identity.Person,
+	entry cultivation.Entry,
+	replyID string,
+	target ReplyTarget,
+	content string,
+	published time.Time,
+) Note {
+	name := mentionName(target.ActorID, target.ActorHandle)
+
+	note := Note{
+		Context:      []string{activityStreamsContext},
+		ID:           urls.ReplyNote(replyID),
+		Type:         "Note",
+		AttributedTo: urls.Actor(person.ID),
+		Content:      replyContent(name, target, content),
+		Published:    published.UTC().Format(time.RFC3339),
+		InReplyTo:    target.ObjectID,
+		URL:          urls.Entry(entry.CycleID, entry.ID),
+		To:           []string{PublicCollection},
+		CC:           []string{urls.Followers(person.ID)},
+	}
+	if target.ActorID != "" {
+		note.CC = append(note.CC, target.ActorID)
+	}
+	if name != "" && target.ActorID != "" {
+		note.Tag = []Tag{{Type: "Mention", Href: target.ActorID, Name: name}}
+	}
+
+	return note
+}
+
+// replyContent escapa o texto e monta a menção ao autor da mensagem original.
+func replyContent(name string, target ReplyTarget, content string) string {
+	mention := ""
+	if name != "" {
+		href := target.ActorURL
+		if href == "" {
+			href = target.ActorID
+		}
+		mention = `<span class="h-card"><a href="` + html.EscapeString(href) +
+			`" class="u-url mention">` + html.EscapeString(name) + `</a></span> `
+	}
+
+	escaped := html.EscapeString(strings.TrimSpace(content))
+	escaped = strings.ReplaceAll(escaped, "\r\n", "\n")
+	escaped = strings.ReplaceAll(escaped, "\n", "<br>")
+	return "<p>" + mention + escaped + "</p>"
+}
+
+// mentionName monta o nome completo da menção a partir do Actor remoto.
+func mentionName(actorID, handle string) string {
+	handle = strings.TrimPrefix(strings.TrimSpace(handle), "@")
+	if handle == "" {
+		return ""
+	}
+	if strings.Contains(handle, "@") {
+		return "@" + handle
+	}
+
+	if parsed, err := url.Parse(actorID); err == nil && parsed.Host != "" {
+		return "@" + handle + "@" + parsed.Host
+	}
+	return "@" + handle
 }
 
 // NewCreate monta a atividade Create que distribui a Note.

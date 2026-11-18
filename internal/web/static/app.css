@@ -483,6 +483,31 @@ button:hover {
   white-space: pre-line;
 }
 
+.reply-local {
+  border-left-color: var(--accent);
+}
+
+.reply-form {
+  margin-top: 0.5rem;
+}
+
+.reply-form summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.9rem;
+}
+
+.reply-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.reply-form textarea {
+  width: 100%;
+}
+
 .button-small {
   padding: 0.4rem 0.7rem;
   font-size: 0.85rem;

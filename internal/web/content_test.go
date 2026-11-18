@@ -1385,7 +1385,7 @@ func TestCycleTimelineRendersFederatedInteractions(t *testing.T) {
 		"1 resposta",
 		"1 curtida",
 		"1 impulso",
-		"Respostas do Fediverso",
+		"Respostas",
 		"Bob Cultivador",
 		"Que tomate bonito!",
 		"https://remote.example/@bob",
@@ -1394,5 +1394,155 @@ func TestCycleTimelineRendersFederatedInteractions(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("timeline does not contain %q", want)
 		}
+	}
+}
+
+func TestCycleTimelineRendersLocalReplyAndReplyForm(t *testing.T) {
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro público.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+
+	published := time.Date(2026, 11, 18, 10, 30, 0, 0, time.UTC)
+	federationService := newFakeFederation(t)
+	federationService.interactions = map[string]federation.EntryInteractions{
+		"entry-1": {
+			Replies: []federation.Interaction{
+				{
+					ID:          "reply-1",
+					Direction:   "inbound",
+					ActorHandle: "bob",
+					ActorName:   "Bob Cultivador",
+					ActorURL:    "https://remote.example/@bob",
+					Content:     "Que tomate bonito!",
+					PublishedAt: &published,
+				},
+				{
+					ID:          "reply-2",
+					Direction:   "outbound",
+					ActorHandle: "ana",
+					ActorName:   "Ana Silva",
+					Content:     "Obrigada, Bob!",
+					PublishedAt: &published,
+				},
+			},
+		},
+	}
+
+	identityService := newFakeIdentity()
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+
+	response := getPage(router, "/diario/cycle-1", session)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+
+	body := response.Body.String()
+	for _, want := range []string{
+		"Sua resposta",
+		"Obrigada, Bob!",
+		"Responder",
+		`action="/diario/cycle-1/registros/entry-1/respostas"`,
+		`name="reply_id" value="reply-1"`,
+		`maxlength="2000"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("timeline does not contain %q", want)
+		}
+	}
+	if strings.Contains(body, `name="reply_id" value="reply-2"`) {
+		t.Error("local reply should not offer another reply form")
+	}
+}
+
+func TestEntryReplyPublishesResponse(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:         "entry-1",
+		CycleID:    "cycle-1",
+		AuthorID:   "person-1",
+		OccurredAt: time.Now(),
+		Body:       "Registro público.",
+		Visibility: cultivation.EntryVisibilityInherit,
+		CreatedAt:  time.Now(),
+	}}
+
+	federationService := newFakeFederation(t)
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1", session)
+
+	response := postForm(router, "/diario/cycle-1/registros/entry-1/respostas", url.Values{
+		"csrf_token": {csrf.Value},
+		"reply_id":   {"reply-1"},
+		"content":    {"Obrigada, Bob!"},
+	}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if location := response.Header().Get("Location"); location != "/diario/cycle-1#registro-entry-1" {
+		t.Errorf("Location = %q", location)
+	}
+	if federationService.replyCalls != 1 {
+		t.Fatalf("replyCalls = %d, want 1", federationService.replyCalls)
+	}
+	if federationService.lastReplyID != "reply-1" {
+		t.Errorf("reply id = %q", federationService.lastReplyID)
+	}
+	if federationService.lastReplyContent != "Obrigada, Bob!" {
+		t.Errorf("reply content = %q", federationService.lastReplyContent)
+	}
+}
+
+func TestEntryReplyRejectsEmptyContent(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:         "entry-1",
+		CycleID:    "cycle-1",
+		AuthorID:   "person-1",
+		OccurredAt: time.Now(),
+		Visibility: cultivation.EntryVisibilityInherit,
+		CreatedAt:  time.Now(),
+	}}
+
+	federationService := newFakeFederation(t)
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1", session)
+
+	response := postForm(router, "/diario/cycle-1/registros/entry-1/respostas", url.Values{
+		"csrf_token": {csrf.Value},
+		"reply_id":   {"reply-1"},
+		"content":    {"   "},
+	}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusSeeOther)
+	}
+	if location := response.Header().Get("Location"); location != "/diario/cycle-1?erro_resposta=vazia#registro-entry-1" {
+		t.Errorf("Location = %q", location)
+	}
+	if federationService.replyCalls != 0 {
+		t.Errorf("replyCalls = %d, want 0", federationService.replyCalls)
 	}
 }
