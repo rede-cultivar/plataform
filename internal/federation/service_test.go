@@ -1,12 +1,43 @@
 package federation
 
 import (
+	"encoding/json"
 	"errors"
 	"net"
 	"net/url"
 	"testing"
 	"time"
 )
+
+func TestOutboxItemsKeepsOnlyPublicCreates(t *testing.T) {
+	activities := []ActivityRecord{
+		{ActivityType: "Create", Payload: json.RawMessage(`{"type":"Create","id":"1"}`)},
+		{ActivityType: "Accept", Payload: json.RawMessage(`{"type":"Accept","id":"2"}`)},
+		{ActivityType: "Create", Payload: json.RawMessage(`{"type":"Create","id":"3"}`)},
+		{ActivityType: "Undo", Payload: json.RawMessage(`{"type":"Undo","id":"4"}`)},
+	}
+
+	items := outboxItems(activities)
+	if len(items) != 2 {
+		t.Fatalf("items = %d, want 2", len(items))
+	}
+
+	for index, want := range []string{"1", "3"} {
+		raw, ok := items[index].(json.RawMessage)
+		if !ok {
+			t.Fatalf("item %d = %T, want json.RawMessage", index, items[index])
+		}
+		var payload struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatalf("unmarshal item %d: %v", index, err)
+		}
+		if payload.ID != want {
+			t.Errorf("item %d id = %q, want %q", index, payload.ID, want)
+		}
+	}
+}
 
 func TestObjectHelpers(t *testing.T) {
 	if got := objectID("https://remote.example/objects/1"); got != "https://remote.example/objects/1" {

@@ -123,7 +123,7 @@ Fediverso:
 | `GET /.well-known/nodeinfo` | Descoberta do NodeInfo 2.0 |
 | `GET /nodeinfo/2.0` | Informações e estatísticas da instância |
 | `GET /actors/{id}` | Actor ActivityPub (`Person`), incluindo a chave pública |
-| `GET /actors/{id}/outbox` | Atividades públicas de saída |
+| `GET /actors/{id}/outbox` | Publicações públicas de saída (apenas `Create`) |
 | `GET /actors/{id}/followers` | Seguidores aceitos |
 | `GET /actors/{id}/following` | Pessoas seguidas (coleção vazia por enquanto) |
 | `POST /actors/{id}/inbox` | Recebe atividades com assinatura HTTP válida |
@@ -359,6 +359,12 @@ Fluxo implementado:
 - **Recebimento:** `POST /actors/{id}/inbox` valida a assinatura, o `Digest` e a
   data; `Follow` gera `Accept`, `Undo` remove o seguidor e as demais atividades
   são persistidas para garantir idempotência.
+- **Outbox:** a coleção lista apenas atividades `Create` públicas. Atividades de
+  controle, como `Accept`, não são publicações e não entram no `totalItems`, que
+  outras instâncias usam como contagem de publicações.
+- **Novos seguidores:** o Mastodon não importa itens do outbox ao abrir um
+  perfil; ele mostra apenas o que recebeu. Por isso, ao aceitar um `Follow`, as
+  publicações públicas mais recentes são reenfileiradas para o novo seguidor.
 - **Chaves:** cada Actor recebe um par RSA 2048 em `actor_keys`; a chave pública
   é exposta em `publicKey` no documento do Actor.
 - **Segurança:** o cliente remoto bloqueia endereços privados, loopback e de

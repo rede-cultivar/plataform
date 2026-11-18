@@ -217,7 +217,11 @@ func (s *Store) FindActivity(ctx context.Context, activityID string) (*ActivityR
 	return activity, nil
 }
 
-// ListOutbox lista as atividades públicas de saída de uma pessoa.
+// ListOutbox lista as publicações públicas de saída de uma pessoa.
+//
+// Apenas atividades Create entram no outbox. Atividades de controle, como
+// Accept, não são publicações e não devem inflar o totalItems exibido por
+// outras instâncias.
 func (s *Store) ListOutbox(ctx context.Context, personID string, limit int) ([]ActivityRecord, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
@@ -229,6 +233,7 @@ func (s *Store) ListOutbox(ctx context.Context, personID string, limit int) ([]A
 		WHERE person_id = $1::uuid
 		  AND direction = 'outbound'
 		  AND visibility = 'public'
+		  AND activity_type = 'Create'
 		ORDER BY created_at DESC
 		LIMIT $2
 	`, personID, limit)

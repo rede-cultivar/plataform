@@ -25,6 +25,9 @@ const (
 	maxInboxBytes = 1 << 20
 	// maxDeliveryAttempts encerra entregas que falham repetidamente.
 	maxDeliveryAttempts = 8
+	// backfillLimit é a quantidade de publicações recentes enviada a um novo
+	// seguidor quando o Follow é aceito.
+	backfillLimit = 20
 )
 
 // Service reúne as regras de publicação e recebimento federado.
@@ -146,17 +149,14 @@ func (s *Service) PublishEntry(
 	return nil
 }
 
-// Outbox devolve a coleção de atividades públicas de saída.
+// Outbox devolve a coleção de publicações públicas de saída.
 func (s *Service) Outbox(ctx context.Context, personID string) (OrderedCollection, error) {
 	activities, err := s.store.ListOutbox(ctx, personID, 50)
 	if err != nil {
 		return OrderedCollection{}, err
 	}
 
-	items := make([]any, 0, len(activities))
-	for _, activity := range activities {
-		items = append(items, json.RawMessage(activity.Payload))
-	}
+	items := outboxItems(activities)
 
 	return OrderedCollection{
 		Context:      activityStreamsContext,
@@ -165,6 +165,22 @@ func (s *Service) Outbox(ctx context.Context, personID string) (OrderedCollectio
 		TotalItems:   len(items),
 		OrderedItems: items,
 	}, nil
+}
+
+// outboxItems converte apenas publicações Create em itens do outbox.
+//
+// Atividades de controle, como Accept, não representam publicações e não
+// devem aparecer no totalItems que outras instâncias usam como contagem de
+// publicações.
+func outboxItems(activities []ActivityRecord) []any {
+	items := make([]any, 0, len(activities))
+	for _, activity := range activities {
+		if activity.ActivityType != "Create" {
+			continue
+		}
+		items = append(items, json.RawMessage(activity.Payload))
+	}
+	return items
 }
 
 // Followers devolve a coleção de seguidores aceitos.
@@ -270,7 +286,12 @@ func (s *Service) handleFollow(ctx context.Context, personID string, remote *Rem
 		return nil
 	}
 
-	return s.sendAccept(ctx, personID, remote, body)
+	if err := s.sendAccept(ctx, personID, remote, body); err != nil {
+		return err
+	}
+
+	s.backfillFollow(ctx, personID, remote)
+	return nil
 }
 
 func (s *Service) handleUndo(ctx context.Context, personID string, remote *RemoteActor, activity InboxActivity, body []byte) error {
@@ -338,6 +359,30 @@ func (s *Service) sendAccept(ctx context.Context, personID string, remote *Remot
 	}
 
 	return s.store.EnqueueDelivery(ctx, activityDBID, remote.InboxURL())
+}
+
+// backfillFollow envia as publicações públicas recentes ao novo seguidor.
+//
+// O Mastodon não importa itens do outbox ao abrir um perfil: ele mostra apenas
+// as atividades que recebeu. Sem esse envio, quem segue depois da publicação
+// não vê os registros anteriores.
+func (s *Service) backfillFollow(ctx context.Context, personID string, remote *RemoteActor) {
+	activities, err := s.store.ListOutbox(ctx, personID, backfillLimit)
+	if err != nil {
+		s.logger.Warn("list federation backfill", "person", personID, "error", err)
+		return
+	}
+
+	inbox := remote.InboxURL()
+	for _, activity := range activities {
+		if err := s.store.EnqueueDelivery(ctx, activity.ID, inbox); err != nil {
+			s.logger.Warn("enqueue federation backfill",
+				"activity", activity.ActivityID,
+				"inbox", inbox,
+				"error", err,
+			)
+		}
+	}
 }
 
 // ProcessDeliveries entrega as atividades pendentes e devolve quantas foram
