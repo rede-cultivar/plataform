@@ -433,6 +433,56 @@ button:hover {
   margin: 0;
 }
 
+.entry-interactions {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--border);
+}
+
+.interaction-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+.entry-interactions h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.replies {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.reply {
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+}
+
+.reply-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0 0 0.25rem;
+}
+
+.reply-meta a {
+  color: var(--accent);
+}
+
+.reply-content {
+  margin: 0;
+  white-space: pre-line;
+}
+
 .button-small {
   padding: 0.4rem 0.7rem;
   font-size: 0.85rem;

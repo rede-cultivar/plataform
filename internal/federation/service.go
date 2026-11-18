@@ -369,12 +369,33 @@ func (s *Service) HandleInbox(ctx context.Context, personID string, req *http.Re
 		return s.handleFollow(ctx, personID, remote, activity, body)
 	case "Undo":
 		return s.handleUndo(ctx, personID, remote, activity, body)
+	case "Create":
+		handled, err := s.handleReply(ctx, personID, remote, activity, body)
+		if handled || err != nil {
+			return err
+		}
+	case "Update":
+		handled, err := s.handleReplyUpdate(ctx, personID, remote, activity, body)
+		if handled || err != nil {
+			return err
+		}
+	case "Like":
+		handled, err := s.handleReaction(ctx, personID, remote, activity, body, InteractionLike)
+		if handled || err != nil {
+			return err
+		}
+	case "Announce":
+		handled, err := s.handleReaction(ctx, personID, remote, activity, body, InteractionAnnounce)
+		if handled || err != nil {
+			return err
+		}
 	case "Delete":
-		_ = s.store.RemoveFollow(ctx, personID, remote.ID)
-		return s.recordInbound(ctx, personID, activity, body)
-	default:
-		return s.recordInbound(ctx, personID, activity, body)
+		if err := s.handleDelete(ctx, personID, remote, activity); err != nil {
+			return err
+		}
 	}
+
+	return s.recordInbound(ctx, personID, activity, body)
 }
 
 func (s *Service) handleFollow(ctx context.Context, personID string, remote *RemoteActor, activity InboxActivity, body []byte) error {
@@ -409,21 +430,35 @@ func (s *Service) handleFollow(ctx context.Context, personID string, remote *Rem
 }
 
 func (s *Service) handleUndo(ctx context.Context, personID string, remote *RemoteActor, activity InboxActivity, body []byte) error {
-	if objectType(activity.Object) == "Follow" {
+	if kind := objectType(activity.Object); kind == "Follow" {
 		if actor := embeddedActor(activity.Object); actor != "" && !sameURL(actor, remote.ID) {
 			return fmt.Errorf("%w: Undo de Follow de outro Actor", ErrInvalidActivity)
 		}
 		if err := s.store.RemoveFollow(ctx, personID, remote.ID); err != nil {
 			return err
 		}
+	} else if _, ok := reactionKind(kind); ok {
+		if actor := embeddedActor(activity.Object); actor != "" && !sameURL(actor, remote.ID) {
+			return fmt.Errorf("%w: Undo de reação de outro Actor", ErrInvalidActivity)
+		}
+		if err := s.undoReaction(ctx, remote, activity); err != nil {
+			return err
+		}
 	} else if id := objectID(activity.Object); id != "" {
 		activityType, err := s.store.ActivityType(ctx, id)
-		if err == nil && activityType == "Follow" {
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return err
+		}
+
+		switch activityType {
+		case "Follow":
 			if err := s.store.RemoveFollow(ctx, personID, remote.ID); err != nil {
 				return err
 			}
-		} else if err != nil && !errors.Is(err, ErrNotFound) {
-			return err
+		case "Like", "Announce":
+			if err := s.store.DeleteReactionByActivity(ctx, remote.ID, id); err != nil {
+				return err
+			}
 		}
 	}
 

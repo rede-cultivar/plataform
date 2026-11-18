@@ -108,6 +108,34 @@
           {{end}}
 
           <p class="muted">Registrado por @{{.AuthorHandle}} em {{.CreatedAt.Format "02/01/2006 15:04"}}.</p>
+
+          {{$interactions := index $.Interactions .ID}}
+          {{if $interactions.HasAny}}
+            <div class="entry-interactions">
+              <p class="interaction-counts muted">
+                {{with $interactions.ReplySummary}}<span>{{.}}</span>{{end}}
+                {{with $interactions.LikeSummary}}<span>{{.}}</span>{{end}}
+                {{with $interactions.AnnounceSummary}}<span>{{.}}</span>{{end}}
+              </p>
+
+              {{if $interactions.Replies}}
+                <h3>Respostas do Fediverso</h3>
+                <ol class="replies">
+                  {{range $interactions.Replies}}
+                    <li class="reply">
+                      <p class="reply-meta">
+                        {{if .ActorURL}}<a href="{{.ActorURL}}" rel="noopener noreferrer nofollow" target="_blank">{{end}}
+                          <strong>{{.ActorLabel}}</strong>
+                        {{if .ActorURL}}</a>{{end}}
+                        {{with .PublishedLabel}}<span class="muted">· {{.}}</span>{{end}}
+                      </p>
+                      {{if .Content}}<p class="reply-content">{{.Content}}</p>{{end}}
+                    </li>
+                  {{end}}
+                </ol>
+              {{end}}
+            </div>
+          {{end}}
         </li>
       {{end}}
     </ol>

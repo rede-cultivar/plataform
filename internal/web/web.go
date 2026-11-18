@@ -94,6 +94,7 @@ type FederationService interface {
 	Outbox(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	Followers(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	FollowerProfiles(ctx context.Context, personID string) ([]federation.Follower, error)
+	EntryInteractions(ctx context.Context, entryIDs []string) (map[string]federation.EntryInteractions, error)
 	HandleInbox(ctx context.Context, personID string, r *http.Request) error
 	FindActivity(ctx context.Context, activityID string) (json.RawMessage, error)
 }
@@ -159,6 +160,7 @@ type pageData struct {
 	Cycle          *cultivation.Cycle
 	Entries        []cultivation.Entry
 	EntryMedia     map[string][]media.Asset
+	Interactions   map[string]federation.EntryInteractions
 	CycleFilter    cultivation.CycleFilter
 	FormCycle      cultivation.Cycle
 	FormEntry      cultivation.Entry

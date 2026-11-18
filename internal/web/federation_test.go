@@ -29,6 +29,7 @@ type fakeFederation struct {
 	followers        federation.OrderedCollection
 	profiles         []federation.Follower
 	profilesErr      error
+	interactions     map[string]federation.EntryInteractions
 	activities       map[string]json.RawMessage
 	inboxErr         error
 	inboxCalls       int
@@ -96,6 +97,16 @@ func (f *fakeFederation) FollowerProfiles(_ context.Context, _ string) ([]federa
 		return nil, f.profilesErr
 	}
 	return f.profiles, nil
+}
+
+func (f *fakeFederation) EntryInteractions(_ context.Context, entryIDs []string) (map[string]federation.EntryInteractions, error) {
+	result := make(map[string]federation.EntryInteractions, len(entryIDs))
+	for _, entryID := range entryIDs {
+		if value, ok := f.interactions[entryID]; ok {
+			result[entryID] = value
+		}
+	}
+	return result, nil
 }
 
 func (f *fakeFederation) HandleInbox(_ context.Context, _ string, _ *http.Request) error {

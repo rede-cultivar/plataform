@@ -159,6 +159,20 @@ func (s *server) cycleShow(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if s.federation != nil && len(entries) > 0 {
+		ids := make([]string, len(entries))
+		for i, entry := range entries {
+			ids[i] = entry.ID
+		}
+
+		interactions, err := s.federation.EntryInteractions(r.Context(), ids)
+		if err != nil {
+			s.logger.Warn("list entry interactions", "error", err)
+		} else {
+			data.Interactions = interactions
+		}
+	}
+
 	s.render(w, http.StatusOK, "cycle.html", data)
 }
 

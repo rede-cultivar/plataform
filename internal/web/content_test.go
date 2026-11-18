@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
+	"github.com/rede-cultivar/plataform/internal/federation"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
 	"github.com/rede-cultivar/plataform/internal/practices"
 )
@@ -1335,6 +1336,61 @@ func TestCycleTimelineRendersStructuredEntry(t *testing.T) {
 
 	body := response.Body.String()
 	for _, want := range []string{"Primeira colheita.", "altura_cm", "25", "rega", "mosca-branca", "1.5 kg", "Floração"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("timeline does not contain %q", want)
+		}
+	}
+}
+
+func TestCycleTimelineRendersFederatedInteractions(t *testing.T) {
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro público.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+
+	published := time.Date(2026, 11, 18, 10, 30, 0, 0, time.UTC)
+	federationService := newFakeFederation(t)
+	federationService.interactions = map[string]federation.EntryInteractions{
+		"entry-1": {
+			Replies: []federation.Interaction{{
+				ActorHandle: "bob",
+				ActorName:   "Bob Cultivador",
+				ActorURL:    "https://remote.example/@bob",
+				Content:     "Que tomate bonito!",
+				PublishedAt: &published,
+			}},
+			Likes:     []federation.Interaction{{ActorHandle: "carol"}},
+			Announces: []federation.Interaction{{ActorHandle: "dave"}},
+		},
+	}
+
+	router := newContentTestRouterWithFederation(
+		t, newFakeIdentity(), cultivationService, newFakePractice(), nil, federationService,
+	)
+	response := getPage(router, "/diario/cycle-1")
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+
+	body := response.Body.String()
+	for _, want := range []string{
+		"1 resposta",
+		"1 curtida",
+		"1 impulso",
+		"Respostas do Fediverso",
+		"Bob Cultivador",
+		"Que tomate bonito!",
+		"https://remote.example/@bob",
+		"18/11/2026 10:30",
+	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("timeline does not contain %q", want)
 		}
