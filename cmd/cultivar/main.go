@@ -308,7 +308,8 @@ func runAdmin(args []string) error {
 // runFederation executa operações pontuais de federação.
 //
 // O comando "refresh" reconstrói a Note de um registro e redistribui a
-// publicação, útil após corrigir dados ou remover uma mídia com problema.
+// publicação, útil após corrigir dados ou remover uma mídia com problema. Se o
+// registro deixou de ser público, envia a atividade Delete correspondente.
 func runFederation(args []string) error {
 	if len(args) != 2 || args[0] != "refresh" {
 		return errors.New("usage: cultivar federation refresh <registro>")
@@ -352,18 +353,22 @@ func runFederation(args []string) error {
 		return err
 	}
 
-	cycle, _, err := cultivationService.FindCycle(ctx, "", entry.CycleID)
-	if errors.Is(err, cultivation.ErrNotFound) {
-		fmt.Println("registro não é público; nada a federar.")
-		return nil
-	}
+	cycle, _, err := cultivationService.FindCycle(ctx, entry.AuthorID, entry.CycleID)
 	if err != nil {
-		return err
+		return fmt.Errorf("carregar ciclo do registro %s: %w", entry.ID, err)
 	}
 
 	person, err := identityService.FindPersonByID(ctx, entry.AuthorID)
 	if err != nil {
 		return err
+	}
+
+	if entry.EffectiveVisibility(cycle) != cultivation.VisibilityPublic {
+		if err := federationService.PublishEntryDelete(ctx, *person, *cycle, *entry); err != nil {
+			return err
+		}
+		fmt.Printf("registro %s removido da federação.\n", entry.ID)
+		return nil
 	}
 
 	assets, err := mediaService.ListByEntryIDs(ctx, []string{entry.ID})

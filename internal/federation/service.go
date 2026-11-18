@@ -168,6 +168,55 @@ func (s *Service) PublishEntryUpdate(
 	return s.enqueueFollowers(ctx, person.ID, activityDBID)
 }
 
+// PublishEntryDelete remove do Fediverso uma publicação que deixou de ser
+// pública.
+//
+// A atividade só é enviada quando existe uma publicação anterior. Registros
+// nunca publicados não geram tráfego.
+func (s *Service) PublishEntryDelete(
+	ctx context.Context,
+	person identity.Person,
+	cycle cultivation.Cycle,
+	entry cultivation.Entry,
+) error {
+	if _, err := s.ActorKey(ctx, person.ID); err != nil {
+		return err
+	}
+
+	note := NewEntryNote(s.urls, person, cycle, entry, nil)
+
+	latest, err := s.store.LatestObjectActivityType(ctx, person.ID, note.ID)
+	if err != nil {
+		return err
+	}
+	if latest != "Create" && latest != "Update" {
+		return nil
+	}
+
+	id, err := newActivityID()
+	if err != nil {
+		return err
+	}
+
+	deletion := NewDelete(s.urls, person, note, id)
+	payload, err := json.Marshal(deletion)
+	if err != nil {
+		return fmt.Errorf("codificar atividade Delete: %w", err)
+	}
+
+	activityDBID, inserted, err := s.store.InsertActivity(
+		ctx, person.ID, deletion.ID, "Delete", note.ID, payload, "public", "outbound",
+	)
+	if err != nil {
+		return err
+	}
+	if !inserted {
+		return nil
+	}
+
+	return s.enqueueFollowers(ctx, person.ID, activityDBID)
+}
+
 // publishCreate grava e distribui uma nova atividade Create.
 func (s *Service) publishCreate(ctx context.Context, person identity.Person, note Note) error {
 	id, err := newActivityID()

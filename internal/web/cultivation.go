@@ -596,7 +596,11 @@ func (s *server) entryEdit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.publishEntryUpdate(r.Context(), account.Person, *cycle, *updated)
+	if updated.EffectiveVisibility(cycle) == cultivation.VisibilityPublic {
+		s.publishEntryUpdate(r.Context(), account.Person, *cycle, *updated)
+	} else if entry.EffectiveVisibility(cycle) == cultivation.VisibilityPublic {
+		s.publishEntryDelete(r.Context(), account.Person, *cycle, *updated)
+	}
 
 	http.Redirect(w, r, "/diario/"+cycleID+"#registro-"+updated.ID, http.StatusSeeOther)
 }
@@ -622,6 +626,18 @@ func (s *server) publishEntryUpdate(ctx context.Context, person identity.Person,
 
 	if err := s.federation.PublishEntryUpdate(ctx, person, cycle, entry, assets); err != nil {
 		s.logger.Warn("publish cultivation entry update", "entry", entry.ID, "error", err)
+	}
+}
+
+// publishEntryDelete remove do Fediverso uma publicação que deixou de ser
+// pública, evitando que o registro continue visível em instâncias remotas.
+func (s *server) publishEntryDelete(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry) {
+	if s.federation == nil {
+		return
+	}
+
+	if err := s.federation.PublishEntryDelete(ctx, person, cycle, entry); err != nil {
+		s.logger.Warn("unpublish cultivation entry", "entry", entry.ID, "error", err)
 	}
 }
 

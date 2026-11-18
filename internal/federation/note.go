@@ -68,6 +68,26 @@ type Update struct {
 	Object  Note     `json:"object"`
 }
 
+// Tombstone representa um objeto removido do Fediverso.
+type Tombstone struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+}
+
+// Delete representa a remoção de uma publicação federada.
+//
+// O Mastodon aceita o objeto como Tombstone e remove o status correspondente
+// quando o Actor é o mesmo que publicou.
+type Delete struct {
+	Context []string  `json:"@context"`
+	ID      string    `json:"id"`
+	Type    string    `json:"type"`
+	Actor   string    `json:"actor"`
+	To      []string  `json:"to"`
+	CC      []string  `json:"cc,omitempty"`
+	Object  Tombstone `json:"object"`
+}
+
 // NewEntryNote traduz um registro de cultivo público para uma Note.
 func NewEntryNote(urls URLs, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) Note {
 	published := entry.CreatedAt
@@ -131,6 +151,22 @@ func NewUpdate(urls URLs, person identity.Person, note Note, activityID string) 
 		To:      note.To,
 		CC:      note.CC,
 		Object:  note,
+	}
+}
+
+// NewDelete monta a atividade que remove uma publicação do Fediverso.
+func NewDelete(urls URLs, person identity.Person, note Note, activityID string) Delete {
+	return Delete{
+		Context: []string{activityStreamsContext},
+		ID:      urls.Activity(activityID),
+		Type:    "Delete",
+		Actor:   urls.Actor(person.ID),
+		To:      note.To,
+		CC:      note.CC,
+		Object: Tombstone{
+			ID:   note.ID,
+			Type: "Tombstone",
+		},
 	}
 }
 

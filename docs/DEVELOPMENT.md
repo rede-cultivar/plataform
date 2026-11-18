@@ -264,7 +264,7 @@ O binário também expõe comandos operacionais:
 | --- | --- |
 | `cultivar migrate <up\|down\|status\|version>` | Executa migrações |
 | `cultivar admin <promote\|demote\|list>` | Administra papéis |
-| `cultivar federation refresh <registro>` | Reconstrói e redistribui um registro público |
+| `cultivar federation refresh <registro>` | Reconstrói e redistribui um registro (ou o remove, se não for mais público) |
 
 ## Configuração
 
@@ -368,8 +368,10 @@ Fluxo implementado:
   `Note` é reconstruída e distribuída em uma atividade `Update`, com o mesmo
   identificador. A instância remota substitui o conteúdo e os anexos, exibindo a
   marca de edição. Registros ainda não publicados são enviados como `Create`.
-  O comando `cultivar federation refresh <registro>` refaz esse envio para
-  corrigir dados ou remover uma mídia com problema.
+  Quando o registro deixa de ser público, uma atividade `Delete` com
+  `Tombstone` remove o status remoto. O comando
+  `cultivar federation refresh <registro>` refaz o envio adequado para corrigir
+  dados, remover uma mídia com problema ou despublicar.
 - **Entrega:** as entregas são gravadas em `federation_deliveries` na mesma
   operação e processadas pelo trabalhador (`make worker`), com recuo exponencial
   e limite de tentativas. As requisições levam `Date`, `Digest` e
@@ -398,7 +400,7 @@ publicamente por HTTPS. Configure `CULTIVAR_LOCAL_DOMAIN` com a URL pública
 (por exemplo, `https://cultivar.example`), exponha a porta local por um túnel ou
 proxy reverso e siga o Actor a partir de uma conta no Mastodon. Práticas ainda
 não são federadas; alterações em registros publicados são enviadas como
-`Update`.
+`Update` e a despublicação como `Delete`.
 
 ## Solução de problemas
 

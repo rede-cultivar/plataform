@@ -35,6 +35,8 @@ type fakeFederation struct {
 	updateCalls      int
 	lastUpdate       cultivation.Entry
 	lastUpdateAssets []media.Asset
+	deleteCalls      int
+	lastDelete       cultivation.Entry
 }
 
 func newFakeFederation(t *testing.T) *fakeFederation {
@@ -64,6 +66,12 @@ func (f *fakeFederation) PublishEntryUpdate(_ context.Context, _ identity.Person
 	f.updateCalls++
 	f.lastUpdate = entry
 	f.lastUpdateAssets = assets
+	return nil
+}
+
+func (f *fakeFederation) PublishEntryDelete(_ context.Context, _ identity.Person, _ cultivation.Cycle, entry cultivation.Entry) error {
+	f.deleteCalls++
+	f.lastDelete = entry
 	return nil
 }
 

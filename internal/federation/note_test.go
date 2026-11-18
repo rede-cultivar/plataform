@@ -1,6 +1,7 @@
 package federation
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -292,6 +293,47 @@ func TestNewUpdate(t *testing.T) {
 	}
 	if update.Object.ID != note.ID || update.Object.Updated != note.Updated {
 		t.Errorf("Object = %+v, want note %+v", update.Object, note)
+	}
+}
+
+func TestNewDelete(t *testing.T) {
+	urls := NewURLs("https://cultivar.example")
+	note := NewEntryNote(urls, testPerson(), testCycle(), testEntry(), nil)
+
+	deletion := NewDelete(urls, testPerson(), note, "abc123")
+
+	if deletion.ID != "https://cultivar.example/activities/abc123" {
+		t.Errorf("ID = %q", deletion.ID)
+	}
+	if deletion.Type != "Delete" {
+		t.Errorf("Type = %q, want Delete", deletion.Type)
+	}
+	if deletion.Actor != urls.Actor(testPerson().ID) {
+		t.Errorf("Actor = %q", deletion.Actor)
+	}
+	if len(deletion.To) != 1 || deletion.To[0] != PublicCollection {
+		t.Errorf("To = %v", deletion.To)
+	}
+	if deletion.Object.ID != note.ID || deletion.Object.Type != "Tombstone" {
+		t.Errorf("Object = %+v, want tombstone of %q", deletion.Object, note.ID)
+	}
+
+	payload, err := json.Marshal(deletion)
+	if err != nil {
+		t.Fatalf("marshal delete: %v", err)
+	}
+	var decoded struct {
+		Type   string `json:"type"`
+		Object struct {
+			ID   string `json:"id"`
+			Type string `json:"type"`
+		} `json:"object"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal delete: %v", err)
+	}
+	if decoded.Type != "Delete" || decoded.Object.Type != "Tombstone" || decoded.Object.ID != note.ID {
+		t.Errorf("payload = %s, want Delete of a Tombstone", payload)
 	}
 }
 

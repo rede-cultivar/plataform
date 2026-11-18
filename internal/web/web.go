@@ -90,6 +90,7 @@ type FederationService interface {
 	ActorKey(ctx context.Context, personID string) (*federation.KeyPair, error)
 	PublishEntry(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) error
 	PublishEntryUpdate(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) error
+	PublishEntryDelete(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry) error
 	Outbox(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	Followers(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	FollowerProfiles(ctx context.Context, personID string) ([]federation.Follower, error)
