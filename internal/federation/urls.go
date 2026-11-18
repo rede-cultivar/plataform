@@ -82,6 +82,11 @@ func (u URLs) Media(id string) string {
 	return u.base + "/media/" + url.PathEscape(id)
 }
 
+// Practice retorna a página pública de uma prática.
+func (u URLs) Practice(id string) string {
+	return u.base + "/praticas/" + url.PathEscape(id)
+}
+
 // Profile retorna a página pública do perfil.
 func (u URLs) Profile(handle string) string {
 	return u.base + "/perfil/" + url.PathEscape(handle)

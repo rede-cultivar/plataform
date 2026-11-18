@@ -222,6 +222,79 @@ func TestNewCreate(t *testing.T) {
 	}
 }
 
+func TestNewEntryNoteIncludesCycleContext(t *testing.T) {
+	cycle := testCycle()
+	cycle.Variety = "Santa Cruz"
+	cycle.Environment = cultivation.EnvironmentOutdoor
+	cycle.Location = "Varanda"
+	cycle.StartedOn = time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+
+	entry := testEntry()
+	entry.Measurements = map[string]string{"folhas": "8", "altura_cm": "30"}
+	entry.Interventions = []string{"rega", "poda"}
+	entry.Occurrences = []string{"solo seco"}
+	entry.PracticeID = "practice-1"
+	entry.PracticeTitle = "Compostagem rápida"
+
+	note := NewEntryNote(NewURLs("https://cultivar.example"), testPerson(), cycle, entry, nil)
+
+	for _, want := range []string{
+		"Solanum lycopersicum · Santa Cruz",
+		"Externo · Varanda · iniciado em 01/08/2026",
+		"10/09/2026",
+		"<strong>Medidas</strong>",
+		"<li>altura_cm: 30</li><li>folhas: 8</li>",
+		"<strong>Intervenções</strong>",
+		"<li>rega</li><li>poda</li>",
+		"<strong>Ocorrências</strong>",
+		"<li>solo seco</li>",
+		`<a href="https://cultivar.example/praticas/practice-1">Compostagem rápida</a>`,
+		`<a href="https://cultivar.example/diario/cycle-1#registro-entry-1">Ver registro completo</a>`,
+	} {
+		if !strings.Contains(note.Content, want) {
+			t.Errorf("Content = %q, want %q", note.Content, want)
+		}
+	}
+}
+
+func TestNewEntryNoteWithoutCycleNameUsesDefaultTitle(t *testing.T) {
+	cycle := cultivation.Cycle{ID: "cycle-1"}
+	entry := cultivation.Entry{ID: "entry-1", CycleID: "cycle-1", Body: "Registro simples."}
+
+	note := NewEntryNote(NewURLs("https://cultivar.example"), testPerson(), cycle, entry, nil)
+
+	if !strings.Contains(note.Content, "<strong>Registro de cultivo</strong>") {
+		t.Errorf("Content = %q, want default title", note.Content)
+	}
+}
+
+func TestNewUpdate(t *testing.T) {
+	urls := NewURLs("https://cultivar.example")
+	note := NewEntryNote(urls, testPerson(), testCycle(), testEntry(), nil)
+	note.Updated = "2026-09-10T10:00:00Z"
+
+	update := NewUpdate(urls, testPerson(), note, "abc123")
+
+	if update.ID != "https://cultivar.example/activities/abc123" {
+		t.Errorf("ID = %q", update.ID)
+	}
+	if update.Type != "Update" {
+		t.Errorf("Type = %q, want Update", update.Type)
+	}
+	if update.Actor != urls.Actor(testPerson().ID) {
+		t.Errorf("Actor = %q", update.Actor)
+	}
+	if len(update.To) != 1 || update.To[0] != PublicCollection {
+		t.Errorf("To = %v", update.To)
+	}
+	if len(update.CC) != 1 || update.CC[0] != note.CC[0] {
+		t.Errorf("CC = %v", update.CC)
+	}
+	if update.Object.ID != note.ID || update.Object.Updated != note.Updated {
+		t.Errorf("Object = %+v, want note %+v", update.Object, note)
+	}
+}
+
 func TestNewActivityIDIsOpaqueAndUnique(t *testing.T) {
 	first, err := newActivityID()
 	if err != nil {

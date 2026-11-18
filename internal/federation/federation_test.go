@@ -47,6 +47,9 @@ func TestURLs(t *testing.T) {
 	if got := urls.Profile("ana"); got != "http://localhost:8080/perfil/ana" {
 		t.Errorf("Profile() = %q", got)
 	}
+	if got := urls.Practice("abc"); got != "http://localhost:8080/praticas/abc" {
+		t.Errorf("Practice() = %q", got)
+	}
 }
 
 func TestParseSignatureHeaderReportsParameterNames(t *testing.T) {

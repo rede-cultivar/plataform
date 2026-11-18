@@ -49,6 +49,8 @@ func run(args []string) error {
 		return runMigrate(args[1:])
 	case "admin":
 		return runAdmin(args[1:])
+	case "federation":
+		return runFederation(args[1:])
 	case "version":
 		fmt.Println(version.String())
 		return nil
@@ -71,6 +73,8 @@ Comandos:
   worker             Inicia o processamento assíncrono
   migrate <comando>  Executa migrações: up, down, status ou version
   admin <comando>    Administra papéis: promote, demote ou list
+  federation refresh <registro>
+                     Redistribui um registro público após alterações
   version            Exibe a versão em execução
   help               Exibe esta ajuda
 
@@ -298,6 +302,80 @@ func runAdmin(args []string) error {
 		return fmt.Errorf("comando administrativo desconhecido %q", args[0])
 	}
 
+	return nil
+}
+
+// runFederation executa operações pontuais de federação.
+//
+// O comando "refresh" reconstrói a Note de um registro e redistribui a
+// publicação, útil após corrigir dados ou remover uma mídia com problema.
+func runFederation(args []string) error {
+	if len(args) != 2 || args[0] != "refresh" {
+		return errors.New("usage: cultivar federation refresh <registro>")
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+
+	logger := logging.New(cfg.LogLevel, cfg.Env)
+	ctx, stop := signalContext()
+	defer stop()
+
+	db, err := database.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	objects, err := storage.NewBackend(cfg)
+	if err != nil {
+		return err
+	}
+
+	cultivationService := cultivation.NewService(db)
+	mediaService := media.NewService(db, objects)
+	identityService := identity.NewService(db, cfg.SessionIdleTimeout, cfg.SessionAbsoluteTimeout)
+	federationService := federation.NewService(
+		db,
+		federation.NewURLs(cfg.BaseURL()),
+		logger,
+		!cfg.IsProduction(),
+	)
+
+	entry, err := cultivationService.FindEntry(ctx, args[1])
+	if errors.Is(err, cultivation.ErrNotFound) {
+		return fmt.Errorf("registro %s não encontrado", args[1])
+	}
+	if err != nil {
+		return err
+	}
+
+	cycle, _, err := cultivationService.FindCycle(ctx, "", entry.CycleID)
+	if errors.Is(err, cultivation.ErrNotFound) {
+		fmt.Println("registro não é público; nada a federar.")
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	person, err := identityService.FindPersonByID(ctx, entry.AuthorID)
+	if err != nil {
+		return err
+	}
+
+	assets, err := mediaService.ListByEntryIDs(ctx, []string{entry.ID})
+	if err != nil {
+		return err
+	}
+
+	if err := federationService.PublishEntryUpdate(ctx, *person, *cycle, *entry, assets[entry.ID]); err != nil {
+		return err
+	}
+
+	fmt.Printf("registro %s atualizado na federação.\n", entry.ID)
 	return nil
 }
 

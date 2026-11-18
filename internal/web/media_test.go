@@ -328,6 +328,50 @@ func TestEntryPhotoDeleteRemovesAttachedPhoto(t *testing.T) {
 	}
 }
 
+func TestEntryPhotoDeleteFederatesUpdate(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro com foto.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	mediaService := newFakeMedia()
+	mediaService.nextID = 1
+	mediaService.assets["asset-1"] = &media.Asset{ID: "asset-1", OwnerID: "person-1", OriginalName: "antiga.png", ContentType: "image/png", Width: 1, Height: 1, Status: media.StatusReady}
+	mediaService.attachments["entry-1"] = []string{"asset-1"}
+	federationService := newFakeFederation(t)
+
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), mediaService, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1", session)
+
+	response := postForm(router, "/diario/cycle-1/registros/entry-1/fotos/asset-1/apagar", url.Values{
+		"csrf_token": {csrf.Value},
+	}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if federationService.updateCalls != 1 {
+		t.Fatalf("updateCalls = %d, want 1", federationService.updateCalls)
+	}
+	if federationService.lastUpdate.ID != "entry-1" {
+		t.Errorf("updated entry = %q, want entry-1", federationService.lastUpdate.ID)
+	}
+	if len(federationService.lastUpdateAssets) != 0 {
+		t.Errorf("update assets = %v, want none", federationService.lastUpdateAssets)
+	}
+}
+
 func TestEntryPhotoDeleteRejectsNonOwner(t *testing.T) {
 	identityService := newFakeIdentity()
 	cultivationService := newFakeCultivation()

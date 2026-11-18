@@ -23,15 +23,18 @@ import (
 
 // fakeFederation implementa FederationService em memória para os testes HTTP.
 type fakeFederation struct {
-	base        string
-	key         *federation.KeyPair
-	outbox      federation.OrderedCollection
-	followers   federation.OrderedCollection
-	profiles    []federation.Follower
-	profilesErr error
-	activities  map[string]json.RawMessage
-	inboxErr    error
-	inboxCalls  int
+	base             string
+	key              *federation.KeyPair
+	outbox           federation.OrderedCollection
+	followers        federation.OrderedCollection
+	profiles         []federation.Follower
+	profilesErr      error
+	activities       map[string]json.RawMessage
+	inboxErr         error
+	inboxCalls       int
+	updateCalls      int
+	lastUpdate       cultivation.Entry
+	lastUpdateAssets []media.Asset
 }
 
 func newFakeFederation(t *testing.T) *fakeFederation {
@@ -54,6 +57,13 @@ func (f *fakeFederation) ActorKey(_ context.Context, _ string) (*federation.KeyP
 }
 
 func (f *fakeFederation) PublishEntry(_ context.Context, _ identity.Person, _ cultivation.Cycle, _ cultivation.Entry, _ []media.Asset) error {
+	return nil
+}
+
+func (f *fakeFederation) PublishEntryUpdate(_ context.Context, _ identity.Person, _ cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) error {
+	f.updateCalls++
+	f.lastUpdate = entry
+	f.lastUpdateAssets = assets
 	return nil
 }
 

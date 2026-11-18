@@ -258,6 +258,14 @@ make reset   # destrutivo
 | `make reset` | Remove containers e volumes |
 | `make clean` | Remove artefatos de build |
 
+O binário também expõe comandos operacionais:
+
+| Comando | Descrição |
+| --- | --- |
+| `cultivar migrate <up\|down\|status\|version>` | Executa migrações |
+| `cultivar admin <promote\|demote\|list>` | Administra papéis |
+| `cultivar federation refresh <registro>` | Reconstrói e redistribui um registro público |
+
 ## Configuração
 
 A configuração é carregada de variáveis de ambiente. O arquivo `.env.example`
@@ -352,6 +360,16 @@ Fluxo implementado:
   traduzido para uma `Note`, com as fotos como `Image` em `attachment`, e
   distribuído em uma atividade `Create` para os seguidores aceitos. A `Note`
   fica disponível em `GET /notas/{id}` e a atividade em `GET /activities/{id}`.
+  O conteúdo funciona como uma ficha do registro: identifica o ciclo (nome,
+  espécie e variedade), traz o contexto do cultivo (ambiente, local e início),
+  a data e o estágio do registro, o relato, medidas, intervenções, ocorrências,
+  a prática vinculada e o link para a página completa. As fotos vão como anexos.
+- **Atualização:** ao editar um registro público ou incluir/remover fotos, a
+  `Note` é reconstruída e distribuída em uma atividade `Update`, com o mesmo
+  identificador. A instância remota substitui o conteúdo e os anexos, exibindo a
+  marca de edição. Registros ainda não publicados são enviados como `Create`.
+  O comando `cultivar federation refresh <registro>` refaz esse envio para
+  corrigir dados ou remover uma mídia com problema.
 - **Entrega:** as entregas são gravadas em `federation_deliveries` na mesma
   operação e processadas pelo trabalhador (`make worker`), com recuo exponencial
   e limite de tentativas. As requisições levam `Date`, `Digest` e
@@ -378,8 +396,9 @@ O esquema está na migração `00004_federation.sql` (`actor_keys`,
 Para validar com uma instância real, a instância precisa ser acessível
 publicamente por HTTPS. Configure `CULTIVAR_LOCAL_DOMAIN` com a URL pública
 (por exemplo, `https://cultivar.example`), exponha a porta local por um túnel ou
-proxy reverso e siga o Actor a partir de uma conta no Mastodon. Práticas e
-atualizações de publicações já entregues ainda não são federadas.
+proxy reverso e siga o Actor a partir de uma conta no Mastodon. Práticas ainda
+não são federadas; alterações em registros publicados são enviadas como
+`Update`.
 
 ## Solução de problemas
 

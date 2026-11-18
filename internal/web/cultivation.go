@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
+	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/practices"
 )
@@ -594,7 +596,33 @@ func (s *server) entryEdit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	s.publishEntryUpdate(r.Context(), account.Person, *cycle, *updated)
+
 	http.Redirect(w, r, "/diario/"+cycleID+"#registro-"+updated.ID, http.StatusSeeOther)
+}
+
+// publishEntryUpdate redistribui uma publicação após alterações no registro.
+//
+// A atividade Update só é enviada quando o registro é público. As fotos são
+// recarregadas para refletir inclusões e remoções feitas no formulário.
+func (s *server) publishEntryUpdate(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry) {
+	if s.federation == nil || entry.EffectiveVisibility(&cycle) != cultivation.VisibilityPublic {
+		return
+	}
+
+	var assets []media.Asset
+	if s.media != nil {
+		values, err := s.media.ListByEntryIDs(ctx, []string{entry.ID})
+		if err != nil {
+			s.logger.Warn("load entry media for federation update", "entry", entry.ID, "error", err)
+		} else {
+			assets = values[entry.ID]
+		}
+	}
+
+	if err := s.federation.PublishEntryUpdate(ctx, person, cycle, entry, assets); err != nil {
+		s.logger.Warn("publish cultivation entry update", "entry", entry.ID, "error", err)
+	}
 }
 
 func (s *server) renderCycleNew(w http.ResponseWriter, r *http.Request, status int, message string, form cultivation.Cycle) {

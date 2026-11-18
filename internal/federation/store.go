@@ -217,6 +217,28 @@ func (s *Store) FindActivity(ctx context.Context, activityID string) (*ActivityR
 	return activity, nil
 }
 
+// LatestObjectActivityType devolve o tipo da atividade de saída mais recente
+// que se refere a um objeto, ou vazio quando o objeto nunca foi publicado.
+func (s *Store) LatestObjectActivityType(ctx context.Context, personID, objectID string) (string, error) {
+	var activityType string
+	err := s.db.QueryRow(ctx, `
+		SELECT activity_type
+		FROM federation_activities
+		WHERE person_id = $1::uuid
+		  AND direction = 'outbound'
+		  AND object_id = $2
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, personID, objectID).Scan(&activityType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return activityType, nil
+}
+
 // ListOutbox lista as publicações públicas de saída de uma pessoa.
 //
 // Apenas atividades Create entram no outbox. Atividades de controle, como

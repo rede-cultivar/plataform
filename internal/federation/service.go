@@ -109,7 +109,67 @@ func (s *Service) PublishEntry(
 	}
 
 	note := NewEntryNote(s.urls, person, cycle, entry, assets)
+	return s.publishCreate(ctx, person, note)
+}
 
+// PublishEntryUpdate redistribui uma publicação já federada após uma alteração.
+//
+// O Mastodon só atualiza publicações que já recebeu, por isso a Note precisa ter
+// sido distribuída antes. Quando não há publicação anterior, o registro é
+// publicado como Create.
+func (s *Service) PublishEntryUpdate(
+	ctx context.Context,
+	person identity.Person,
+	cycle cultivation.Cycle,
+	entry cultivation.Entry,
+	assets []media.Asset,
+) error {
+	if entry.EffectiveVisibility(&cycle) != cultivation.VisibilityPublic {
+		return nil
+	}
+
+	if _, err := s.ActorKey(ctx, person.ID); err != nil {
+		return err
+	}
+
+	note := NewEntryNote(s.urls, person, cycle, entry, assets)
+
+	latest, err := s.store.LatestObjectActivityType(ctx, person.ID, note.ID)
+	if err != nil {
+		return err
+	}
+	if latest == "" || latest == "Delete" {
+		return s.publishCreate(ctx, person, note)
+	}
+
+	note.Updated = s.now().UTC().Format(time.RFC3339)
+
+	id, err := newActivityID()
+	if err != nil {
+		return err
+	}
+
+	update := NewUpdate(s.urls, person, note, id)
+	payload, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("codificar atividade Update: %w", err)
+	}
+
+	activityDBID, inserted, err := s.store.InsertActivity(
+		ctx, person.ID, update.ID, "Update", note.ID, payload, "public", "outbound",
+	)
+	if err != nil {
+		return err
+	}
+	if !inserted {
+		return nil
+	}
+
+	return s.enqueueFollowers(ctx, person.ID, activityDBID)
+}
+
+// publishCreate grava e distribui uma nova atividade Create.
+func (s *Service) publishCreate(ctx context.Context, person identity.Person, note Note) error {
 	id, err := newActivityID()
 	if err != nil {
 		return err
@@ -131,7 +191,12 @@ func (s *Service) PublishEntry(
 		return nil
 	}
 
-	followers, err := s.store.ListFollowers(ctx, person.ID)
+	return s.enqueueFollowers(ctx, person.ID, activityDBID)
+}
+
+// enqueueFollowers agenda a atividade para todos os seguidores aceitos.
+func (s *Service) enqueueFollowers(ctx context.Context, personID, activityDBID string) error {
+	followers, err := s.store.ListFollowers(ctx, personID)
 	if err != nil {
 		return err
 	}

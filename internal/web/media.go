@@ -199,5 +199,7 @@ func (s *server) entryPhotoDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.publishEntryUpdate(r.Context(), account.Person, *cycle, *entry)
+
 	http.Redirect(w, r, "/diario/"+cycleID+"#registro-"+entryID, http.StatusSeeOther)
 }
