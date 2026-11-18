@@ -379,6 +379,10 @@ Fluxo implementado:
   `Update`. Ao tornar um ciclo público, os registros são publicados pela
   primeira vez. Alterações em estágio, status, substrato e demais campos
   internos não geram tráfego.
+  Uma publicação removida com `Delete` não pode ser recriada com o mesmo
+  identificador: o Mastodon guarda o `Tombstone` e ignora um novo `Create` para
+  o mesmo objeto. Republicar um registro já removido exigiria um identificador
+  novo, o que ainda não está implementado.
 - **Entrega:** as entregas são gravadas em `federation_deliveries` na mesma
   operação e processadas pelo trabalhador (`make worker`), com recuo exponencial
   e limite de tentativas. As requisições levam `Date`, `Digest` e
