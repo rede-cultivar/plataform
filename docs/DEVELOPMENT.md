@@ -372,6 +372,13 @@ Fluxo implementado:
   `Tombstone` remove o status remoto. O comando
   `cultivar federation refresh <registro>` refaz o envio adequado para corrigir
   dados, remover uma mídia com problema ou despublicar.
+- **Edição do ciclo:** como o cartão usa dados do ciclo, editar o ciclo também
+  reconcilia os registros. Se ele deixa de ser público, os registros que eram
+  públicos recebem `Delete`; se os campos do cartão mudam (nome, espécie,
+  variedade, ambiente, local ou início), os registros públicos recebem
+  `Update`. Ao tornar um ciclo público, os registros são publicados pela
+  primeira vez. Alterações em estágio, status, substrato e demais campos
+  internos não geram tráfego.
 - **Entrega:** as entregas são gravadas em `federation_deliveries` na mesma
   operação e processadas pelo trabalhador (`make worker`), com recuo exponencial
   e limite de tentativas. As requisições levam `Date`, `Digest` e

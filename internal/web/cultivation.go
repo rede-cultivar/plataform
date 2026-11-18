@@ -208,7 +208,7 @@ func (s *server) cycleEdit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cycleID := chi.URLParam(r, "id")
-	cycle, _, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, cycleID)
+	cycle, entries, err := s.cultivation.FindCycle(r.Context(), account.Person.ID, cycleID)
 	if errors.Is(err, cultivation.ErrNotFound) {
 		http.Error(w, "página não encontrada", http.StatusNotFound)
 		return
@@ -239,6 +239,8 @@ func (s *server) cycleEdit(w http.ResponseWriter, r *http.Request) {
 	form.ID = cycle.ID
 	form.PersonHandle = cycle.PersonHandle
 
+	before := *cycle
+
 	updated, err := s.cultivation.UpdateCycle(r.Context(), account.Person.ID, cycleID, input)
 	if err != nil {
 		if message, ok := validationMessage(err); ok {
@@ -250,7 +252,50 @@ func (s *server) cycleEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.reconcileCycleFederation(r.Context(), account.Person, before, *updated, entries)
+
 	http.Redirect(w, r, "/diario/"+updated.ID, http.StatusSeeOther)
+}
+
+// reconcileCycleFederation mantém as publicações alinhadas após editar um ciclo.
+//
+// Registros que deixaram de ser públicos recebem Delete. Quando o ciclo passa a
+// ser público ou quando muda um campo usado no cartão, as publicações são
+// redistribuídas com Update; registros ainda não federados são publicados pela
+// primeira vez.
+func (s *server) reconcileCycleFederation(ctx context.Context, person identity.Person, before, after cultivation.Cycle, entries []cultivation.Entry) {
+	if s.federation == nil {
+		return
+	}
+
+	cardChanged := cycleCardChanged(before, after)
+	becamePublic := before.Visibility != cultivation.VisibilityPublic &&
+		after.Visibility == cultivation.VisibilityPublic
+
+	for _, entry := range entries {
+		if entry.EffectiveVisibility(&after) == cultivation.VisibilityPublic {
+			if cardChanged || becamePublic {
+				s.publishEntryUpdate(ctx, person, after, entry)
+			}
+			continue
+		}
+		if entry.EffectiveVisibility(&before) == cultivation.VisibilityPublic {
+			s.publishEntryDelete(ctx, person, after, entry)
+		}
+	}
+}
+
+// cycleCardChanged informa se a edição alterou campos usados no cartão federado.
+//
+// Estágio, status, substrato e demais campos internos não entram na publicação,
+// então não justificam reenviar todas as Notes do ciclo.
+func cycleCardChanged(before, after cultivation.Cycle) bool {
+	return before.Name != after.Name ||
+		before.Species != after.Species ||
+		before.Variety != after.Variety ||
+		before.Environment != after.Environment ||
+		before.Location != after.Location ||
+		before.StartedOn.Format(dateLayout) != after.StartedOn.Format(dateLayout)
 }
 
 // entryNewForm exibe o formulário de criação de um registro.

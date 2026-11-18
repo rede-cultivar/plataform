@@ -34,6 +34,7 @@ type fakeFederation struct {
 	inboxCalls       int
 	updateCalls      int
 	lastUpdate       cultivation.Entry
+	lastUpdateCycle  cultivation.Cycle
 	lastUpdateAssets []media.Asset
 	deleteCalls      int
 	lastDelete       cultivation.Entry
@@ -62,9 +63,10 @@ func (f *fakeFederation) PublishEntry(_ context.Context, _ identity.Person, _ cu
 	return nil
 }
 
-func (f *fakeFederation) PublishEntryUpdate(_ context.Context, _ identity.Person, _ cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) error {
+func (f *fakeFederation) PublishEntryUpdate(_ context.Context, _ identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) error {
 	f.updateCalls++
 	f.lastUpdate = entry
+	f.lastUpdateCycle = cycle
 	f.lastUpdateAssets = assets
 	return nil
 }

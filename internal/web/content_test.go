@@ -895,6 +895,173 @@ func TestCycleEditValidationErrorKeepsFormTarget(t *testing.T) {
 	}
 }
 
+// cycleEditValues monta o formulário de edição de ciclo com os campos padrão.
+func cycleEditValues(csrf, name, visibility string) url.Values {
+	return url.Values{
+		"csrf_token":  {csrf},
+		"name":        {name},
+		"species":     {"Solanum lycopersicum"},
+		"environment": {"outdoor"},
+		"stage":       {"flowering"},
+		"status":      {"active"},
+		"visibility":  {visibility},
+		"started_on":  {"2026-09-01"},
+	}
+}
+
+func TestCycleEditToPrivateFederatesDelete(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro público.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	federationService := newFakeFederation(t)
+
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1/editar", session)
+
+	response := postForm(router, "/diario/cycle-1/editar",
+		cycleEditValues(csrf.Value, "Tomates da varanda", "private"), session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if federationService.deleteCalls != 1 {
+		t.Fatalf("deleteCalls = %d, want 1", federationService.deleteCalls)
+	}
+	if federationService.updateCalls != 0 {
+		t.Errorf("updateCalls = %d, want 0", federationService.updateCalls)
+	}
+	if federationService.lastDelete.ID != "entry-1" {
+		t.Errorf("deleted entry = %q, want entry-1", federationService.lastDelete.ID)
+	}
+}
+
+func TestCycleEditCardChangeFederatesUpdate(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro público.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	federationService := newFakeFederation(t)
+
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1/editar", session)
+
+	response := postForm(router, "/diario/cycle-1/editar",
+		cycleEditValues(csrf.Value, "Tomates da varanda renovada", "public"), session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if federationService.updateCalls != 1 {
+		t.Fatalf("updateCalls = %d, want 1", federationService.updateCalls)
+	}
+	if federationService.deleteCalls != 0 {
+		t.Errorf("deleteCalls = %d, want 0", federationService.deleteCalls)
+	}
+	if federationService.lastUpdate.ID != "entry-1" {
+		t.Errorf("updated entry = %q, want entry-1", federationService.lastUpdate.ID)
+	}
+	if federationService.lastUpdateCycle.Name != "Tomates da varanda renovada" {
+		t.Errorf("updated cycle = %q, want new name", federationService.lastUpdateCycle.Name)
+	}
+}
+
+func TestCycleEditWithoutCardChangeSkipsFederation(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro público.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	federationService := newFakeFederation(t)
+
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1/editar", session)
+
+	response := postForm(router, "/diario/cycle-1/editar",
+		cycleEditValues(csrf.Value, "Tomates da varanda", "public"), session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if federationService.updateCalls != 0 {
+		t.Errorf("updateCalls = %d, want 0", federationService.updateCalls)
+	}
+	if federationService.deleteCalls != 0 {
+		t.Errorf("deleteCalls = %d, want 0", federationService.deleteCalls)
+	}
+}
+
+func TestCycleEditToPublicFederatesEntries(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPrivate)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro privado.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	federationService := newFakeFederation(t)
+
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1/editar", session)
+
+	response := postForm(router, "/diario/cycle-1/editar",
+		cycleEditValues(csrf.Value, "Tomates da varanda", "public"), session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if federationService.updateCalls != 1 {
+		t.Fatalf("updateCalls = %d, want 1", federationService.updateCalls)
+	}
+	if federationService.deleteCalls != 0 {
+		t.Errorf("deleteCalls = %d, want 0", federationService.deleteCalls)
+	}
+}
+
 func TestPracticeEditFormAndUpdate(t *testing.T) {
 	identityService := newFakeIdentity()
 	practiceService := newFakePractice()
