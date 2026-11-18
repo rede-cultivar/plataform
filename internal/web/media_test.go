@@ -9,11 +9,13 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
+	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
 )
 
@@ -274,6 +276,154 @@ func TestEntryEditCanDeleteAndAddPhotos(t *testing.T) {
 	if got := cultivationService.entries["cycle-1"][0].Body; got != "Registro atualizado." {
 		t.Errorf("updated body = %q, want Registro atualizado.", got)
 	}
+}
+
+func TestEntryPhotoDeleteRemovesAttachedPhoto(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPrivate)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro com foto.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	mediaService := newFakeMedia()
+	mediaService.nextID = 1
+	mediaService.assets["asset-1"] = &media.Asset{ID: "asset-1", OwnerID: "person-1", OriginalName: "antiga.png", ContentType: "image/png", Width: 1, Height: 1, Status: media.StatusReady}
+	mediaService.data["asset-1"] = testPNG(t)
+	mediaService.attachments["entry-1"] = []string{"asset-1"}
+
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice(), mediaService)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1", session)
+
+	timeline := getPage(router, "/diario/cycle-1", session)
+	if timeline.Code != http.StatusOK {
+		t.Fatalf("timeline status = %d, want %d", timeline.Code, http.StatusOK)
+	}
+	if body := timeline.Body.String(); !strings.Contains(body, "/diario/cycle-1/registros/entry-1/fotos/asset-1/apagar") {
+		t.Error("timeline does not render the photo delete action")
+	}
+
+	response := postForm(router, "/diario/cycle-1/registros/entry-1/fotos/asset-1/apagar", url.Values{
+		"csrf_token": {csrf.Value},
+	}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if location := response.Header().Get("Location"); location != "/diario/cycle-1#registro-entry-1" {
+		t.Errorf("Location = %q, want timeline anchor", location)
+	}
+	if _, ok := mediaService.assets["asset-1"]; ok {
+		t.Error("photo still exists after deletion")
+	}
+	if attachments := mediaService.attachments["entry-1"]; len(attachments) != 0 {
+		t.Errorf("attachments = %v, want none", attachments)
+	}
+}
+
+func TestEntryPhotoDeleteRejectsNonOwner(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro público.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	mediaService := newFakeMedia()
+	mediaService.assets["asset-1"] = &media.Asset{ID: "asset-1", OwnerID: "person-1", OriginalName: "foto.png", ContentType: "image/png", Width: 1, Height: 1, Status: media.StatusReady}
+	mediaService.data["asset-1"] = testPNG(t)
+	mediaService.attachments["entry-1"] = []string{"asset-1"}
+
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice(), mediaService)
+	session := loginAsBruno(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1", session)
+
+	response := postForm(router, "/diario/cycle-1/registros/entry-1/fotos/asset-1/apagar", url.Values{
+		"csrf_token": {csrf.Value},
+	}, session, csrf)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusForbidden, response.Body.String())
+	}
+	if _, ok := mediaService.assets["asset-1"]; !ok {
+		t.Error("photo was deleted by a non-owner")
+	}
+}
+
+func TestEntryPhotoDeleteRejectsPhotoFromAnotherEntry(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPrivate)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{
+		{ID: "entry-1", CycleID: "cycle-1", AuthorID: "person-1", AuthorHandle: "ana", OccurredAt: time.Now(), Visibility: cultivation.EntryVisibilityInherit, CreatedAt: time.Now()},
+		{ID: "entry-2", CycleID: "cycle-1", AuthorID: "person-1", AuthorHandle: "ana", OccurredAt: time.Now(), Visibility: cultivation.EntryVisibilityInherit, CreatedAt: time.Now()},
+	}
+	mediaService := newFakeMedia()
+	mediaService.assets["asset-1"] = &media.Asset{ID: "asset-1", OwnerID: "person-1", OriginalName: "foto.png", ContentType: "image/png", Width: 1, Height: 1, Status: media.StatusReady}
+	mediaService.data["asset-1"] = testPNG(t)
+	mediaService.attachments["entry-2"] = []string{"asset-1"}
+
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice(), mediaService)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1", session)
+
+	response := postForm(router, "/diario/cycle-1/registros/entry-1/fotos/asset-1/apagar", url.Values{
+		"csrf_token": {csrf.Value},
+	}, session, csrf)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusNotFound, response.Body.String())
+	}
+	if _, ok := mediaService.assets["asset-1"]; !ok {
+		t.Error("photo from another entry was deleted")
+	}
+}
+
+// loginAsBruno autentica uma segunda pessoa para testar permissões.
+func loginAsBruno(t *testing.T, router http.Handler, fake *fakeIdentity) *http.Cookie {
+	t.Helper()
+
+	person := identity.Person{
+		ID:          "person-2",
+		Handle:      "bruno",
+		DisplayName: "Bruno Souza",
+		CreatedAt:   time.Now(),
+	}
+	account := &identity.Account{
+		ID:        "account-2",
+		Email:     "bruno@example.com",
+		Status:    "active",
+		CreatedAt: time.Now(),
+		Person:    person,
+	}
+	fake.accounts[account.Email] = account
+	fake.people[person.Handle] = &person
+
+	csrf := getCSRFCookie(t, router, "/entrar")
+	response := postForm(router, "/entrar", url.Values{
+		"csrf_token": {csrf.Value},
+		"email":      {account.Email},
+		"password":   {testPassword},
+	}, csrf)
+
+	cookie := sessionCookie(response)
+	if cookie == nil {
+		t.Fatalf("login failed: status = %d; body = %s", response.Code, response.Body.String())
+	}
+	return cookie
 }
 
 func TestMediaHiddenForPrivateCycle(t *testing.T) {

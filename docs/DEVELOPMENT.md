@@ -171,6 +171,7 @@ conhecimento reproduzível, como adubos caseiros e construção de recipientes.
 | `POST /diario/{id}/editar` | Atualiza contexto, situação e resultado |
 | `GET /diario/{id}/registros/novo` | Formulário de novo registro |
 | `POST /diario/{id}/registros` | Cria um registro datado, com até 4 fotos |
+| `POST /diario/{cycleID}/registros/{entryID}/fotos/{mediaID}/apagar` | Remove uma foto vinculada ao registro |
 | `GET /media/{id}` | Serve a imagem quando a pessoa tem permissão |
 | `GET /praticas` | Biblioteca pública de práticas |
 | `GET /praticas/minhas` | Práticas da pessoa autenticada, incluindo rascunhos |
@@ -196,7 +197,14 @@ As fotos do diário passam por validação e normalização antes de serem grava
 no armazenamento de objetos. Cada registro aceita até 4 imagens de 10 MB, nos
 formatos JPEG, PNG e GIF. Imagens JPEG e PNG são recodificadas, o que corrige a
 orientação EXIF e remove metadados pessoais, como localização e modelo do
-aparelho. O banco guarda apenas os metadados e a chave do objeto.
+aparelho. O maior lado é reduzido proporcionalmente para no máximo 1024 pixels;
+imagens menores não são ampliadas. GIFs são preservados como enviados para
+manter a animação. O banco guarda apenas os metadados e a chave do objeto.
+
+A pessoa responsável pelo ciclo pode remover fotos pela linha do tempo, com o
+botão **Remover foto** exibido em cada imagem, ou marcando a foto no formulário
+de edição do registro. As duas formas exigem sessão, CSRF e vínculo entre a foto
+e o registro.
 
 O acesso a `GET /media/{id}` é verificado no servidor: a pessoa responsável vê
 todas as suas imagens, enquanto as demais só acessam imagens vinculadas a

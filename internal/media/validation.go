@@ -18,6 +18,8 @@ const (
 	MaxPhotosPerEntry = 4
 	// MaxPixels limita a área da imagem para evitar consumo excessivo de memória.
 	MaxPixels = 40_000_000
+	// MaxDimension é o tamanho máximo do maior lado de uma imagem armazenada.
+	MaxDimension = 1024
 )
 
 // ValidationError descreve uma imagem inválida informada pela pessoa.
@@ -43,8 +45,9 @@ type Prepared struct {
 	Height      int
 }
 
-// Prepare valida a imagem, aplica a orientação EXIF e remove metadados
-// pessoais, como localização e modelo do aparelho.
+// Prepare valida a imagem, aplica a orientação EXIF, reduz o maior lado para
+// MaxDimension e remove metadados pessoais, como localização e modelo do
+// aparelho. GIFs são preservados para manter a animação.
 func Prepare(r io.Reader) (*Prepared, error) {
 	data, err := io.ReadAll(io.LimitReader(r, MaxBytes+1))
 	if err != nil {
@@ -94,6 +97,10 @@ func reencode(data []byte, format imaging.Format, contentType, extension string)
 	if err != nil {
 		return nil, invalid("photos", "Não foi possível processar a imagem.")
 	}
+
+	// Reduz proporcionalmente para que o maior lado tenha no máximo
+	// MaxDimension. O Fit não amplia imagens que já cabem no limite.
+	img = imaging.Fit(img, MaxDimension, MaxDimension, imaging.Lanczos)
 
 	var buffer bytes.Buffer
 	if err := imaging.Encode(&buffer, img, format, imaging.JPEGQuality(85)); err != nil {

@@ -58,12 +58,21 @@
 
           {{if .Body}}<p>{{.Body}}</p>{{end}}
 
+          {{$entryID := .ID}}
           {{with index $.EntryMedia .ID}}
             <div class="entry-media">
               {{range .}}
-                <a href="/media/{{.ID}}">
-                  <img src="/media/{{.ID}}" alt="Foto do registro de cultivo" loading="lazy"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
-                </a>
+                <figure class="entry-photo">
+                  <a href="/media/{{.ID}}">
+                    <img src="/media/{{.ID}}" alt="Foto do registro de cultivo" loading="lazy"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
+                  </a>
+                  {{if $.CanEdit}}
+                    <form method="post" action="/diario/{{$.Cycle.ID}}/registros/{{$entryID}}/fotos/{{.ID}}/apagar">
+                      <input type="hidden" name="csrf_token" value="{{$.CSRFToken}}">
+                      <button type="submit" class="button button-danger button-small">Remover foto</button>
+                    </form>
+                  {{end}}
+                </figure>
               {{end}}
             </div>
           {{end}}

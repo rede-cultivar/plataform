@@ -270,6 +270,7 @@ func NewRouter(deps Deps) http.Handler {
 	router.Post("/diario/{id}/registros", s.requireAccount(s.entryCreate))
 	router.Get("/diario/{cycleID}/registros/{entryID}/editar", s.requireAccount(s.entryEditForm))
 	router.Post("/diario/{cycleID}/registros/{entryID}/editar", s.requireAccount(s.entryEdit))
+	router.Post("/diario/{cycleID}/registros/{entryID}/fotos/{mediaID}/apagar", s.requireAccount(s.entryPhotoDelete))
 	router.Get("/diario/{id}", s.cycleShow)
 
 	router.Get("/media/{id}", s.mediaAsset)

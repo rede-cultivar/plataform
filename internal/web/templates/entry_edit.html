@@ -9,11 +9,13 @@
     {{with index $.EntryMedia $.FormEntry.ID}}
       <fieldset>
         <legend>Fotos do registro</legend>
+        <p class="hint">Marque uma foto para removê-la ao salvar as alterações.</p>
         {{range .}}
           <label class="media-choice">
             <input type="checkbox" name="delete_photo" value="{{.ID}}">
             <img src="/media/{{.ID}}" alt="{{.OriginalName}}" loading="lazy" style="max-width: 120px; max-height: 120px; object-fit: cover;">
             <span>{{.OriginalName}}</span>
+            <span class="media-choice-action">Remover</span>
           </label>
         {{end}}
       </fieldset>
