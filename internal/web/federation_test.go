@@ -18,6 +18,7 @@ import (
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
+	"github.com/rede-cultivar/plataform/internal/practices"
 	"github.com/rede-cultivar/plataform/internal/sitesettings"
 )
 
@@ -45,6 +46,14 @@ type fakeFederation struct {
 	lastUpdateAssets []media.Asset
 	deleteCalls      int
 	lastDelete       cultivation.Entry
+
+	practiceCalls        int
+	lastPractice         practices.Practice
+	practiceUpdateCalls  int
+	lastPracticeUpdate   practices.Practice
+	practiceDeleteCalls  int
+	lastPracticeDelete   practices.Practice
+	practiceInteractions map[string]federation.EntryInteractions
 }
 
 func newFakeFederation(t *testing.T) *fakeFederation {
@@ -85,6 +94,24 @@ func (f *fakeFederation) PublishEntryDelete(_ context.Context, _ identity.Person
 	return nil
 }
 
+func (f *fakeFederation) PublishPractice(_ context.Context, _ identity.Person, practice practices.Practice) error {
+	f.practiceCalls++
+	f.lastPractice = practice
+	return nil
+}
+
+func (f *fakeFederation) PublishPracticeUpdate(_ context.Context, _ identity.Person, practice practices.Practice) error {
+	f.practiceUpdateCalls++
+	f.lastPracticeUpdate = practice
+	return nil
+}
+
+func (f *fakeFederation) PublishPracticeDelete(_ context.Context, _ identity.Person, practice practices.Practice) error {
+	f.practiceDeleteCalls++
+	f.lastPracticeDelete = practice
+	return nil
+}
+
 func (f *fakeFederation) Outbox(_ context.Context, personID string) (federation.OrderedCollection, error) {
 	if f.outbox.ID != "" {
 		return f.outbox, nil
@@ -118,6 +145,16 @@ func (f *fakeFederation) EntryInteractions(_ context.Context, entryIDs []string)
 	for _, entryID := range entryIDs {
 		if value, ok := f.interactions[entryID]; ok {
 			result[entryID] = value
+		}
+	}
+	return result, nil
+}
+
+func (f *fakeFederation) PracticeInteractions(_ context.Context, practiceIDs []string) (map[string]federation.EntryInteractions, error) {
+	result := make(map[string]federation.EntryInteractions, len(practiceIDs))
+	for _, practiceID := range practiceIDs {
+		if value, ok := f.practiceInteractions[practiceID]; ok {
+			result[practiceID] = value
 		}
 	}
 	return result, nil

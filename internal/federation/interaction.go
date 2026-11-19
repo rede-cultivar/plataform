@@ -181,12 +181,23 @@ func actorField(value any) string {
 // entryIDFromNoteURL extrai o identificador de um registro de uma URL
 // /notas/{id} pertencente a esta instância.
 func entryIDFromNoteURL(urls URLs, noteURL string) (string, bool) {
-	noteURL = strings.TrimSpace(noteURL)
-	if noteURL == "" {
+	return localObjectID(urls, noteURL, "notas")
+}
+
+// practiceIDFromArticleURL extrai o identificador de uma prática de uma URL
+// /artigos/{id} pertencente a esta instância.
+func practiceIDFromArticleURL(urls URLs, articleURL string) (string, bool) {
+	return localObjectID(urls, articleURL, "artigos")
+}
+
+// localObjectID reconhece um objeto federado desta instância em um namespace.
+func localObjectID(urls URLs, objectURL, segment string) (string, bool) {
+	objectURL = strings.TrimSpace(objectURL)
+	if objectURL == "" {
 		return "", false
 	}
 
-	parsed, err := url.Parse(noteURL)
+	parsed, err := url.Parse(objectURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return "", false
 	}
@@ -198,7 +209,7 @@ func entryIDFromNoteURL(urls URLs, noteURL string) (string, bool) {
 		return "", false
 	}
 
-	prefix := strings.TrimSuffix(base.Path, "/") + "/notas/"
+	prefix := strings.TrimSuffix(base.Path, "/") + "/" + segment + "/"
 	path := strings.TrimSuffix(parsed.Path, "/")
 	if !strings.HasPrefix(path, prefix) {
 		return "", false
@@ -320,11 +331,59 @@ func (s *Service) EntryInteractions(ctx context.Context, entryIDs []string) (map
 	return s.store.ListEntryInteractions(ctx, entryIDs)
 }
 
+// PracticeInteractions carrega as interações recebidas de várias práticas.
+func (s *Service) PracticeInteractions(ctx context.Context, practiceIDs []string) (map[string]EntryInteractions, error) {
+	return s.store.ListPracticeInteractions(ctx, practiceIDs)
+}
+
+// interactionTarget descreve o objeto local que recebeu uma interação.
+//
+// EntryID de Interaction guarda o identificador do alvo, seja um registro do
+// diário ou uma prática. Practice indica em qual tabela a interação deve ser
+// persistida.
+type interactionTarget struct {
+	PersonID   string
+	ID         string
+	Practice   bool
+	Visibility string
+}
+
+// resolveInteractionTarget reconhece o objeto citado por uma interação.
+//
+// Só objetos desta instância, ainda federados, são considerados. Um registro
+// privado ou uma prática despublicada devolve ok falso, e a atividade é apenas
+// arquivada como recebida.
+func (s *Service) resolveInteractionTarget(ctx context.Context, objectURL string) (interactionTarget, bool, error) {
+	if entryID, found := entryIDFromNoteURL(s.urls, objectURL); found {
+		owner, visibility, err := s.store.FederatedEntryOwner(ctx, entryID)
+		if errors.Is(err, ErrNotFound) {
+			return interactionTarget{}, false, nil
+		}
+		if err != nil {
+			return interactionTarget{}, false, err
+		}
+		return interactionTarget{PersonID: owner, ID: entryID, Visibility: visibility}, true, nil
+	}
+
+	if practiceID, found := practiceIDFromArticleURL(s.urls, objectURL); found {
+		owner, err := s.store.FederatedPracticeOwner(ctx, practiceID)
+		if errors.Is(err, ErrNotFound) {
+			return interactionTarget{}, false, nil
+		}
+		if err != nil {
+			return interactionTarget{}, false, err
+		}
+		return interactionTarget{PersonID: owner, ID: practiceID, Practice: true, Visibility: "public"}, true, nil
+	}
+
+	return interactionTarget{}, false, nil
+}
+
 // handleReply processa uma resposta recebida em Create.
 //
-// A atividade só é considerada uma interação quando responde a uma Note desta
-// instância e quando o registro ainda pode ser federado. Caso contrário, ela é
-// apenas registrada como atividade recebida.
+// A atividade só é considerada uma interação quando responde a uma Note ou a um
+// Article desta instância e quando o objeto ainda pode ser federado. Caso
+// contrário, ela é apenas registrada como atividade recebida.
 func (s *Service) handleReply(ctx context.Context, personID string, remote *RemoteActor, activity InboxActivity, body []byte) (bool, error) {
 	payload, ok := parseReplyObject(activity.Object)
 	if !ok || payload.InReplyTo == "" || payload.ObjectID == "" {
@@ -334,21 +393,14 @@ func (s *Service) handleReply(ctx context.Context, personID string, remote *Remo
 		return true, fmt.Errorf("%w: resposta atribuída a outro Actor", ErrInvalidActivity)
 	}
 
-	entryID, ok := entryIDFromNoteURL(s.urls, payload.InReplyTo)
-	if !ok {
-		return false, nil
-	}
-	owner, visibility, err := s.store.FederatedEntryOwner(ctx, entryID)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil
-	}
+	target, ok, err := s.resolveInteractionTarget(ctx, payload.InReplyTo)
 	if err != nil {
 		return false, err
 	}
-	if owner != personID {
+	if !ok || target.PersonID != personID {
 		return false, nil
 	}
-	allowed, err := s.allowedInteraction(ctx, personID, visibility, remote.ID)
+	allowed, err := s.allowedInteraction(ctx, personID, target.Visibility, remote.ID)
 	if err != nil {
 		return false, err
 	}
@@ -357,7 +409,7 @@ func (s *Service) handleReply(ctx context.Context, personID string, remote *Remo
 	}
 
 	reply := Interaction{
-		EntryID:     entryID,
+		EntryID:     target.ID,
 		Kind:        InteractionReply,
 		Direction:   "inbound",
 		ActivityID:  activity.ID,
@@ -373,7 +425,12 @@ func (s *Service) handleReply(ctx context.Context, personID string, remote *Remo
 		Content:     payload.Content,
 		PublishedAt: payload.PublishedAt,
 	}
-	if err := s.store.UpsertReply(ctx, personID, entryID, reply); err != nil {
+	if target.Practice {
+		err = s.store.UpsertPracticeReply(ctx, personID, target.ID, reply)
+	} else {
+		err = s.store.UpsertReply(ctx, personID, target.ID, reply)
+	}
+	if err != nil {
 		return true, err
 	}
 
@@ -389,21 +446,14 @@ func (s *Service) handleReplyUpdate(ctx context.Context, personID string, remote
 	if payload.AttributedTo != "" && !sameURL(payload.AttributedTo, remote.ID) {
 		return true, fmt.Errorf("%w: resposta atribuída a outro Actor", ErrInvalidActivity)
 	}
-	entryID, ok := entryIDFromNoteURL(s.urls, payload.InReplyTo)
-	if !ok {
-		return false, nil
-	}
-	owner, visibility, err := s.store.FederatedEntryOwner(ctx, entryID)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil
-	}
+	target, ok, err := s.resolveInteractionTarget(ctx, payload.InReplyTo)
 	if err != nil {
 		return false, err
 	}
-	if owner != personID {
+	if !ok || target.PersonID != personID {
 		return false, nil
 	}
-	allowed, err := s.allowedInteraction(ctx, personID, visibility, remote.ID)
+	allowed, err := s.allowedInteraction(ctx, personID, target.Visibility, remote.ID)
 	if err != nil {
 		return false, err
 	}
@@ -419,22 +469,15 @@ func (s *Service) handleReplyUpdate(ctx context.Context, personID string, remote
 
 // handleReaction processa uma curtida ou um impulso.
 func (s *Service) handleReaction(ctx context.Context, personID string, remote *RemoteActor, activity InboxActivity, body []byte, kind InteractionKind) (bool, error) {
-	noteURL := objectID(activity.Object)
-	entryID, ok := entryIDFromNoteURL(s.urls, noteURL)
-	if !ok {
-		return false, nil
-	}
-	owner, visibility, err := s.store.FederatedEntryOwner(ctx, entryID)
-	if errors.Is(err, ErrNotFound) {
-		return false, nil
-	}
+	objectURL := objectID(activity.Object)
+	target, ok, err := s.resolveInteractionTarget(ctx, objectURL)
 	if err != nil {
 		return false, err
 	}
-	if owner != personID {
+	if !ok || target.PersonID != personID {
 		return false, nil
 	}
-	allowed, err := s.allowedInteraction(ctx, personID, visibility, remote.ID)
+	allowed, err := s.allowedInteraction(ctx, personID, target.Visibility, remote.ID)
 	if err != nil {
 		return false, err
 	}
@@ -443,17 +486,22 @@ func (s *Service) handleReaction(ctx context.Context, personID string, remote *R
 	}
 
 	reaction := Interaction{
-		EntryID:     entryID,
+		EntryID:     target.ID,
 		Kind:        kind,
 		ActivityID:  activity.ID,
-		ObjectID:    noteURL,
+		ObjectID:    objectURL,
 		ActorID:     remote.ID,
 		ActorHandle: remote.PreferredUsername,
 		ActorName:   remote.Name,
 		ActorURL:    remoteProfileURL(remote),
 		ActorAvatar: remote.Icon.URL,
 	}
-	if err := s.store.UpsertReaction(ctx, personID, entryID, reaction); err != nil {
+	if target.Practice {
+		err = s.store.UpsertPracticeReaction(ctx, personID, target.ID, reaction)
+	} else {
+		err = s.store.UpsertReaction(ctx, personID, target.ID, reaction)
+	}
+	if err != nil {
 		return true, err
 	}
 
@@ -500,8 +548,12 @@ func (s *Service) undoReaction(ctx context.Context, remote *RemoteActor, activit
 	}
 
 	if value, isObject := activity.Object.(map[string]any); isObject {
-		if entryID, found := entryIDFromNoteURL(s.urls, objectID(value["object"])); found {
+		targetURL := objectID(value["object"])
+		if entryID, found := entryIDFromNoteURL(s.urls, targetURL); found {
 			return s.store.DeleteReaction(ctx, remote.ID, entryID, kind)
+		}
+		if practiceID, found := practiceIDFromArticleURL(s.urls, targetURL); found {
+			return s.store.DeletePracticeReaction(ctx, remote.ID, practiceID, kind)
 		}
 	}
 	if activityID := objectID(activity.Object); activityID != "" {

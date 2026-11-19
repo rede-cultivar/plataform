@@ -39,6 +39,29 @@ func (s *Store) FederatedEntryOwner(ctx context.Context, entryID string) (string
 	return personID, visibility, nil
 }
 
+// FederatedPracticeOwner devolve a pessoa responsável por uma prática que pode
+// ser federada.
+//
+// Práticas só são federadas quando estão publicadas e públicas; rascunhos e
+// práticas arquivadas não recebem interações.
+func (s *Store) FederatedPracticeOwner(ctx context.Context, practiceID string) (string, error) {
+	var personID string
+	err := s.db.QueryRow(ctx, `
+		SELECT author_id::text
+		FROM practices
+		WHERE id::text = $1
+		  AND status = 'published'
+		  AND visibility = 'public'
+	`, practiceID).Scan(&personID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+	return personID, nil
+}
+
 // IsRemoteFollower informa se um Actor remoto segue a pessoa e teve o Follow
 // aceito.
 //
@@ -57,11 +80,20 @@ func (s *Store) IsRemoteFollower(ctx context.Context, personID, actorID string) 
 	return following, err
 }
 
-// UpsertReply grava ou atualiza uma resposta recebida.
+// UpsertReply grava ou atualiza uma resposta recebida em um registro.
 //
 // O object_id é a Note remota e funciona como chave de idempotência: uma
 // reentrega do Create atualiza a mesma linha em vez de duplicar a resposta.
 func (s *Store) UpsertReply(ctx context.Context, personID, entryID string, reply Interaction) error {
+	return s.upsertReply(ctx, personID, &entryID, nil, reply)
+}
+
+// UpsertPracticeReply grava ou atualiza uma resposta recebida em uma prática.
+func (s *Store) UpsertPracticeReply(ctx context.Context, personID, practiceID string, reply Interaction) error {
+	return s.upsertReply(ctx, personID, nil, &practiceID, reply)
+}
+
+func (s *Store) upsertReply(ctx context.Context, personID string, entryID, practiceID *string, reply Interaction) error {
 	direction := reply.Direction
 	if direction == "" {
 		direction = "inbound"
@@ -73,14 +105,14 @@ func (s *Store) UpsertReply(ctx context.Context, personID, entryID string, reply
 
 	_, err := s.db.Exec(ctx, `
 		INSERT INTO federation_replies (
-			person_id, entry_id, direction, activity_id, object_id, actor_id,
+			person_id, entry_id, practice_id, direction, activity_id, object_id, actor_id,
 			actor_handle, actor_name, actor_url, actor_avatar, actor_inbox,
 			in_reply_to, parent_object_id, content, published_at
 		)
 		VALUES (
-			$1::uuid, $2::uuid, $3, $4, $5, $6,
-			$7, $8, $9, $10, $11,
-			$12, $13, $14, $15
+			$1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7,
+			$8, $9, $10, $11, $12,
+			$13, $14, $15, $16
 		)
 		ON CONFLICT (object_id) DO UPDATE
 		SET activity_id = EXCLUDED.activity_id,
@@ -94,7 +126,7 @@ func (s *Store) UpsertReply(ctx context.Context, personID, entryID string, reply
 		    content = EXCLUDED.content,
 		    published_at = EXCLUDED.published_at,
 		    updated_at = now()
-	`, personID, entryID, direction, reply.ActivityID, reply.ObjectID, reply.ActorID,
+	`, personID, entryID, practiceID, direction, reply.ActivityID, reply.ObjectID, reply.ActorID,
 		reply.ActorHandle, reply.ActorName, reply.ActorURL, reply.ActorAvatar, reply.ActorInbox,
 		reply.InReplyTo, parentID, reply.Content, reply.PublishedAt)
 	return err
@@ -199,20 +231,24 @@ func (s *Store) DeleteReply(ctx context.Context, actorID, objectID string) error
 	return err
 }
 
-// UpsertReaction grava ou atualiza uma curtida ou impulso.
+// UpsertReaction grava ou atualiza uma curtida ou impulso em um registro.
 //
 // A unicidade por registro, ator e tipo evita contagens duplicadas quando a
 // instância remota reenvia a atividade.
 func (s *Store) UpsertReaction(ctx context.Context, personID, entryID string, reaction Interaction) error {
-	_, err := s.db.Exec(ctx, `
-		INSERT INTO federation_reactions (
-			person_id, entry_id, kind, activity_id, object_id, actor_id,
-			actor_handle, actor_name, actor_url, actor_avatar
-		)
-		VALUES (
-			$1::uuid, $2::uuid, $3, $4, $5, $6,
-			$7, $8, $9, $10
-		)
+	return s.upsertReaction(ctx, personID, &entryID, nil, reaction)
+}
+
+// UpsertPracticeReaction grava ou atualiza uma curtida ou impulso em uma
+// prática.
+func (s *Store) UpsertPracticeReaction(ctx context.Context, personID, practiceID string, reaction Interaction) error {
+	return s.upsertReaction(ctx, personID, nil, &practiceID, reaction)
+}
+
+func (s *Store) upsertReaction(ctx context.Context, personID string, entryID, practiceID *string, reaction Interaction) error {
+	// O alvo muda o índice de unicidade: registros usam a restrição original e
+	// práticas usam o índice parcial criado na migração 00009.
+	conflict := `
 		ON CONFLICT (entry_id, actor_id, kind) DO UPDATE
 		SET activity_id = EXCLUDED.activity_id,
 		    object_id = EXCLUDED.object_id,
@@ -221,7 +257,30 @@ func (s *Store) UpsertReaction(ctx context.Context, personID, entryID string, re
 		    actor_url = EXCLUDED.actor_url,
 		    actor_avatar = EXCLUDED.actor_avatar,
 		    updated_at = now()
-	`, personID, entryID, string(reaction.Kind), reaction.ActivityID, reaction.ObjectID, reaction.ActorID,
+	`
+	if practiceID != nil {
+		conflict = `
+			ON CONFLICT (practice_id, actor_id, kind) WHERE practice_id IS NOT NULL DO UPDATE
+			SET activity_id = EXCLUDED.activity_id,
+			    object_id = EXCLUDED.object_id,
+			    actor_handle = EXCLUDED.actor_handle,
+			    actor_name = EXCLUDED.actor_name,
+			    actor_url = EXCLUDED.actor_url,
+			    actor_avatar = EXCLUDED.actor_avatar,
+			    updated_at = now()
+		`
+	}
+
+	_, err := s.db.Exec(ctx, `
+		INSERT INTO federation_reactions (
+			person_id, entry_id, practice_id, kind, activity_id, object_id, actor_id,
+			actor_handle, actor_name, actor_url, actor_avatar
+		)
+		VALUES (
+			$1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7,
+			$8, $9, $10, $11
+		)
+	`+conflict, personID, entryID, practiceID, string(reaction.Kind), reaction.ActivityID, reaction.ObjectID, reaction.ActorID,
 		reaction.ActorHandle, reaction.ActorName, reaction.ActorURL, reaction.ActorAvatar)
 	return err
 }
@@ -234,6 +293,17 @@ func (s *Store) DeleteReaction(ctx context.Context, actorID, entryID string, kin
 		  AND entry_id::text = $2
 		  AND kind = $3
 	`, actorID, entryID, string(kind))
+	return err
+}
+
+// DeletePracticeReaction remove a reação de um ator em uma prática.
+func (s *Store) DeletePracticeReaction(ctx context.Context, actorID, practiceID string, kind InteractionKind) error {
+	_, err := s.db.Exec(ctx, `
+		DELETE FROM federation_reactions
+		WHERE actor_id = $1
+		  AND practice_id::text = $2
+		  AND kind = $3
+	`, actorID, practiceID, string(kind))
 	return err
 }
 
@@ -269,12 +339,23 @@ func (s *Store) RemoveActorInteractions(ctx context.Context, actorID string) err
 // O resultado é indexado pelo identificador do registro. Registros sem
 // interações simplesmente não aparecem no mapa.
 func (s *Store) ListEntryInteractions(ctx context.Context, entryIDs []string) (map[string]EntryInteractions, error) {
+	return s.listInteractions(ctx, "entry_id", entryIDs)
+}
+
+// ListPracticeInteractions carrega respostas e reações de várias práticas.
+//
+// O resultado é indexado pelo identificador da prática.
+func (s *Store) ListPracticeInteractions(ctx context.Context, practiceIDs []string) (map[string]EntryInteractions, error) {
+	return s.listInteractions(ctx, "practice_id", practiceIDs)
+}
+
+func (s *Store) listInteractions(ctx context.Context, targetColumn string, targetIDs []string) (map[string]EntryInteractions, error) {
 	result := make(map[string]EntryInteractions)
-	if len(entryIDs) == 0 {
+	if len(targetIDs) == 0 {
 		return result, nil
 	}
 
-	replies, err := s.listReplies(ctx, entryIDs)
+	replies, err := s.listReplies(ctx, targetColumn, targetIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +365,7 @@ func (s *Store) ListEntryInteractions(ctx context.Context, entryIDs []string) (m
 		result[reply.EntryID] = value
 	}
 
-	reactions, err := s.listReactions(ctx, entryIDs)
+	reactions, err := s.listReactions(ctx, targetColumn, targetIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -302,16 +383,16 @@ func (s *Store) ListEntryInteractions(ctx context.Context, entryIDs []string) (m
 	return result, nil
 }
 
-func (s *Store) listReplies(ctx context.Context, entryIDs []string) ([]Interaction, error) {
+func (s *Store) listReplies(ctx context.Context, targetColumn string, targetIDs []string) ([]Interaction, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT
-			id::text, entry_id::text, direction, activity_id, object_id, actor_id,
+			id::text, COALESCE(entry_id, practice_id)::text, direction, activity_id, object_id, actor_id,
 			actor_handle, actor_name, actor_url, actor_avatar, actor_inbox,
 			in_reply_to, parent_object_id, content, published_at, created_at
 		FROM federation_replies
-		WHERE entry_id = ANY($1::uuid[])
+		WHERE `+targetColumn+` = ANY($1::uuid[])
 		ORDER BY COALESCE(published_at, created_at), created_at
-	`, entryIDs)
+	`, targetIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -352,15 +433,15 @@ func (s *Store) listReplies(ctx context.Context, entryIDs []string) ([]Interacti
 	return replies, nil
 }
 
-func (s *Store) listReactions(ctx context.Context, entryIDs []string) ([]Interaction, error) {
+func (s *Store) listReactions(ctx context.Context, targetColumn string, targetIDs []string) ([]Interaction, error) {
 	rows, err := s.db.Query(ctx, `
 		SELECT
-			id::text, entry_id::text, kind, activity_id, object_id, actor_id,
+			id::text, COALESCE(entry_id, practice_id)::text, kind, activity_id, object_id, actor_id,
 			actor_handle, actor_name, actor_url, actor_avatar, created_at
 		FROM federation_reactions
-		WHERE entry_id = ANY($1::uuid[])
+		WHERE `+targetColumn+` = ANY($1::uuid[])
 		ORDER BY created_at
-	`, entryIDs)
+	`, targetIDs)
 	if err != nil {
 		return nil, err
 	}

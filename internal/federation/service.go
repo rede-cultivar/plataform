@@ -19,6 +19,7 @@ import (
 	"github.com/rede-cultivar/plataform/internal/cultivation"
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
+	"github.com/rede-cultivar/plataform/internal/practices"
 )
 
 const (
@@ -270,6 +271,151 @@ func (s *Service) publishCreate(ctx context.Context, person identity.Person, not
 	}
 
 	return s.enqueueFollowers(ctx, person.ID, activityDBID)
+}
+
+// PublishPractice publica uma prática como Article e distribui a atividade.
+//
+// Práticas só entram no Fediverso quando estão publicadas e públicas. Rascunhos
+// e práticas arquivadas não geram tráfego.
+func (s *Service) PublishPractice(ctx context.Context, person identity.Person, practice practices.Practice) error {
+	if !practiceFederated(practice) {
+		return nil
+	}
+
+	if _, err := s.ActorKey(ctx, person.ID); err != nil {
+		return err
+	}
+
+	article := NewPracticeArticle(s.urls, person, practice)
+	return s.publishArticleCreate(ctx, person, article, s.urls.Article(practice.ID))
+}
+
+// PublishPracticeUpdate redistribui uma prática já federada após uma alteração.
+//
+// Quando não há publicação anterior, ou quando a última atividade foi um
+// Delete, a prática é publicada como Create. Como práticas são sempre públicas,
+// não há troca de identificador por visibilidade.
+func (s *Service) PublishPracticeUpdate(ctx context.Context, person identity.Person, practice practices.Practice) error {
+	if !practiceFederated(practice) {
+		return nil
+	}
+
+	if _, err := s.ActorKey(ctx, person.ID); err != nil {
+		return err
+	}
+
+	article := NewPracticeArticle(s.urls, person, practice)
+	objectID := s.urls.Article(practice.ID)
+
+	latest, err := s.store.LatestObjectActivity(ctx, person.ID, objectID)
+	if err != nil {
+		return err
+	}
+	if latest.Type == "" || latest.Type == "Delete" {
+		return s.publishArticleCreate(ctx, person, article, objectID)
+	}
+
+	article.Updated = s.now().UTC().Format(time.RFC3339)
+
+	id, err := newActivityID()
+	if err != nil {
+		return err
+	}
+
+	update := NewArticleUpdate(s.urls, person, article, id)
+	payload, err := json.Marshal(update)
+	if err != nil {
+		return fmt.Errorf("codificar atividade Update: %w", err)
+	}
+
+	activityDBID, inserted, err := s.store.InsertActivity(
+		ctx, person.ID, update.ID, "Update", objectID, payload, "public", "outbound",
+	)
+	if err != nil {
+		return err
+	}
+	if !inserted {
+		return nil
+	}
+
+	return s.enqueueFollowers(ctx, person.ID, activityDBID)
+}
+
+// PublishPracticeDelete remove do Fediverso uma prática que deixou de ser
+// federada.
+//
+// A atividade só é enviada quando existe uma publicação anterior. O Tombstone
+// reaproveita o identificador do Article já distribuído.
+func (s *Service) PublishPracticeDelete(ctx context.Context, person identity.Person, practice practices.Practice) error {
+	if _, err := s.ActorKey(ctx, person.ID); err != nil {
+		return err
+	}
+
+	objectID := s.urls.Article(practice.ID)
+
+	latest, err := s.store.LatestObjectActivity(ctx, person.ID, objectID)
+	if err != nil {
+		return err
+	}
+	if latest.Type != "Create" && latest.Type != "Update" {
+		return nil
+	}
+
+	article := NewPracticeArticle(s.urls, person, practice)
+
+	id, err := newActivityID()
+	if err != nil {
+		return err
+	}
+
+	deletion := NewArticleDelete(s.urls, person, article, id)
+	payload, err := json.Marshal(deletion)
+	if err != nil {
+		return fmt.Errorf("codificar atividade Delete: %w", err)
+	}
+
+	activityDBID, inserted, err := s.store.InsertActivity(
+		ctx, person.ID, deletion.ID, "Delete", objectID, payload, latest.Visibility, "outbound",
+	)
+	if err != nil {
+		return err
+	}
+	if !inserted {
+		return nil
+	}
+
+	return s.enqueueFollowers(ctx, person.ID, activityDBID)
+}
+
+// publishArticleCreate grava e distribui uma nova atividade Create de Article.
+func (s *Service) publishArticleCreate(ctx context.Context, person identity.Person, article Article, objectID string) error {
+	id, err := newActivityID()
+	if err != nil {
+		return err
+	}
+
+	create := NewArticleCreate(s.urls, person, article, id)
+	payload, err := json.Marshal(create)
+	if err != nil {
+		return fmt.Errorf("codificar atividade Create: %w", err)
+	}
+
+	activityDBID, inserted, err := s.store.InsertActivity(
+		ctx, person.ID, create.ID, "Create", objectID, payload, "public", "outbound",
+	)
+	if err != nil {
+		return err
+	}
+	if !inserted {
+		return nil
+	}
+
+	return s.enqueueFollowers(ctx, person.ID, activityDBID)
+}
+
+// practiceFederated informa se a prática pode ser publicada no Fediverso.
+func practiceFederated(practice practices.Practice) bool {
+	return practice.Status == practices.StatusPublished && practice.Visibility == practices.VisibilityPublic
 }
 
 // activityVisibility converte a visibilidade do diário para o valor guardado na

@@ -99,6 +99,12 @@ func (s *server) practiceCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.federation != nil && federatedPractice(practice) {
+		if err := s.federation.PublishPractice(r.Context(), account.Person, *practice); err != nil {
+			s.logger.Warn("publish practice", "practice", practice.ID, "error", err)
+		}
+	}
+
 	http.Redirect(w, r, "/praticas/"+practice.ID, http.StatusSeeOther)
 }
 
@@ -128,6 +134,15 @@ func (s *server) practiceShow(w http.ResponseWriter, r *http.Request) {
 	data := s.newPage(w, r)
 	data.Practice = practice
 	data.CanEdit = practice.IsOwner(viewerID)
+
+	if s.federation != nil && federatedPractice(practice) {
+		interactions, err := s.federation.PracticeInteractions(r.Context(), []string{practice.ID})
+		if err != nil {
+			s.logger.Warn("list practice interactions", "practice", practice.ID, "error", err)
+		} else {
+			data.PracticeInteractions = interactions[practice.ID]
+		}
+	}
 
 	s.render(w, http.StatusOK, "practice.html", data)
 }
@@ -216,6 +231,19 @@ func (s *server) practiceEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.federation != nil {
+		switch {
+		case federatedPractice(updated):
+			if err := s.federation.PublishPracticeUpdate(r.Context(), account.Person, *updated); err != nil {
+				s.logger.Warn("update practice federation", "practice", updated.ID, "error", err)
+			}
+		case federatedPractice(practice):
+			if err := s.federation.PublishPracticeDelete(r.Context(), account.Person, *practice); err != nil {
+				s.logger.Warn("delete practice federation", "practice", practice.ID, "error", err)
+			}
+		}
+	}
+
 	http.Redirect(w, r, "/praticas/"+updated.ID, http.StatusSeeOther)
 }
 
@@ -263,6 +291,12 @@ func (s *server) practicePublish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.federation != nil {
+		if err := s.federation.PublishPracticeUpdate(r.Context(), account.Person, *practice); err != nil {
+			s.logger.Warn("publish practice federation", "practice", practice.ID, "error", err)
+		}
+	}
+
 	http.Redirect(w, r, "/praticas/"+practice.ID, http.StatusSeeOther)
 }
 
@@ -298,6 +332,12 @@ func (s *server) practiceArchive(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("archive practice", "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
+	}
+
+	if s.federation != nil {
+		if err := s.federation.PublishPracticeDelete(r.Context(), account.Person, *practice); err != nil {
+			s.logger.Warn("archive practice federation", "practice", practice.ID, "error", err)
+		}
 	}
 
 	http.Redirect(w, r, "/praticas/"+practice.ID, http.StatusSeeOther)
@@ -344,6 +384,13 @@ func practiceInputFromForm(r *http.Request) practices.Input {
 		License:      r.PostFormValue("license"),
 		Publish:      r.PostFormValue("action") == "publish",
 	}
+}
+
+// federatedPractice informa se a prática pode ser publicada no Fediverso.
+func federatedPractice(practice *practices.Practice) bool {
+	return practice != nil &&
+		practice.Status == practices.StatusPublished &&
+		practice.Visibility == practices.VisibilityPublic
 }
 
 func practiceFormFromInput(input practices.Input, id string) practices.Practice {

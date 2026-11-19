@@ -35,6 +35,34 @@ func TestEntryIDFromNoteURL(t *testing.T) {
 	}
 }
 
+func TestPracticeIDFromArticleURL(t *testing.T) {
+	urls := NewURLs("https://cultivar.example")
+	const practiceID = "e026bd4f-d80d-466c-80e4-d2704905373e"
+
+	cases := []struct {
+		name  string
+		input string
+		want  string
+		ok    bool
+	}{
+		{"canônica", urls.Article(practiceID), practiceID, true},
+		{"barra final", urls.Article(practiceID) + "/", practiceID, true},
+		{"outro host", "https://other.example/artigos/" + practiceID, "", false},
+		{"outro caminho", "https://cultivar.example/notas/" + practiceID, "", false},
+		{"identificador inválido", "https://cultivar.example/artigos/abc", "", false},
+		{"vazio", "", "", false},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := practiceIDFromArticleURL(urls, test.input)
+			if ok != test.ok || got != test.want {
+				t.Fatalf("practiceIDFromArticleURL(%q) = %q, %v; want %q, %v", test.input, got, ok, test.want, test.ok)
+			}
+		})
+	}
+}
+
 func TestPlainText(t *testing.T) {
 	input := `<p>Olá, <strong>mundo</strong>!</p><p>Segunda linha &amp; mais.</p>`
 	want := "Olá, mundo!\nSegunda linha & mais."

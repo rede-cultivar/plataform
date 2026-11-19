@@ -112,6 +112,15 @@ func (u URLs) ValidNoteToken(id, token string) bool {
 	return validCapability(u.capabilityToken("note", id), token)
 }
 
+// Article retorna a URL canônica de uma prática federada.
+//
+// O objeto é um Article porque a prática é conhecimento reproduzível, não um
+// relato datado como os registros do diário. A URL humana continua em
+// /praticas/{id}; /artigos/{id} serve apenas a representação ActivityPub.
+func (u URLs) Article(id string) string {
+	return u.base + "/artigos/" + url.PathEscape(id)
+}
+
 // ReplyNote retorna a URL canônica de uma resposta publicada pelo Cultivar.
 //
 // O namespace é separado de /notas para que um identificador de resposta nunca

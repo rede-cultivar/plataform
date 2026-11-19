@@ -128,6 +128,7 @@ Fediverso:
 | `GET /actors/{id}/following` | Pessoas seguidas na instância (contas remotas pendentes) |
 | `POST /actors/{id}/inbox` | Recebe atividades com assinatura HTTP válida |
 | `GET /notas/{id}` | Representação `Note` de um registro federado (token para `followers`) |
+| `GET /artigos/{id}` | Representação `Article` de uma prática publicada |
 | `GET /activities/{id}` | Atividade federada de saída já publicada |
 
 Os identificadores de Actor são opacos e estáveis, no formato
@@ -220,6 +221,14 @@ conhecimento reproduzível, como adubos caseiros e construção de recipientes.
 | `POST /praticas/{id}/publicar` | Publica uma prática validada |
 | `POST /praticas/{id}/arquivar` | Arquiva uma prática |
 
+Práticas publicadas e públicas também são federadas como `Article`. O objeto
+canônico fica em `GET /artigos/{id}` e a URL humana em `GET /praticas/{id}`. O
+corpo reúne resumo, categoria, dificuldade, tempo, custo, materiais, passo a
+passo, avisos, adaptações, referências e licença; o título vai no campo `name`.
+O resumo não usa o campo `summary`, porque o Mastodon interpreta esse campo
+como aviso de conteúdo (CW). Rascunhos e práticas arquivadas não geram tráfego.
+Interações recebidas aparecem na própria página da prática, sob o conteúdo.
+
 Ciclos são privados por padrão; a publicação é explícita. Registros podem herdar
 a visibilidade do ciclo ou restringi-la, nunca ampliá-la. Práticas publicadas
 exigem pelo menos uma etapa e uma licença definida. O vínculo entre um registro e
@@ -251,7 +260,11 @@ protegidas pela mesma regra.
 
 Limitações atuais:
 
-- Práticas ainda não são federadas; apenas registros do diário geram `Note`.
+- Práticas publicadas são federadas como `Article`, mas ainda não têm upload de
+  imagens na interface; por isso o `Article` não inclui anexos.
+- As interações de uma prática aparecem na página dela, mas ainda não é possível
+  publicar uma resposta local a partir dessa página; respostas locais existem
+  apenas para registros do diário.
 - A coleção `following` do Actor lista apenas as pessoas seguidas nesta
   instância; o acompanhamento de contas remotas ainda não está implementado.
 - O token de capacidade é derivado do identificador e do segredo da instância,
@@ -433,6 +446,12 @@ Fluxo implementado:
   identificador: o Mastodon guarda o `Tombstone` e ignora um novo `Create` para
   o mesmo objeto. Republicar um registro já removido exigiria um identificador
   novo, o que ainda não está implementado.
+- **Práticas:** ao publicar uma prática, ela é traduzida para um `Article` e
+  distribuída em uma atividade `Create` pública para os seguidores aceitos. O
+  objeto é servido em `GET /artigos/{id}` e o link humano aponta para
+  `/praticas/{id}`. Edições geram `Update` com o mesmo identificador; arquivar
+  uma prática gera `Delete` com `Tombstone`. Práticas são sempre públicas, então
+  não há troca de identificador por visibilidade. Rascunhos não geram tráfego.
 - **Entrega:** as entregas são gravadas em `federation_deliveries` na mesma
   operação e processadas pelo trabalhador (`make worker`), com recuo exponencial
   e limite de tentativas. As requisições levam `Date`, `Digest` e
@@ -445,16 +464,17 @@ Fluxo implementado:
   retentar.
 - **Interações:** respostas (`Create` de uma `Note` com `inReplyTo`), curtidas
   (`Like`), impulsos (`Announce`), edições de resposta (`Update`) e remoções
-  (`Delete`/`Undo`) são vinculados ao registro quando a Note citada pertence a
-  esta instância e o registro ainda é federado. Em conteúdo `followers`, só são
-  aceitas interações de um Actor remoto confirmado como seguidor. O texto das
-  respostas é extraído do HTML e guardado em texto simples, limitado a 4000
-  caracteres. Cada ator tem no máximo uma curtida e um impulso por registro;
-  novas atividades do mesmo tipo atualizam a existente. As interações aparecem
-  na página do ciclo, junto ao registro, com contadores e respostas. `Delete` de
-  uma conta remove também suas interações. O Mastodon não oferece o botão de
-  impulso em publicações `followers`; o `Announce` continua aceito pelo
-  protocolo, mas não pode ser disparado por essa interface.
+  (`Delete`/`Undo`) são vinculados ao registro ou à prática quando a `Note` ou o
+  `Article` citado pertence a esta instância e o objeto ainda é federado. Em
+  conteúdo `followers`, só são aceitas interações de um Actor remoto confirmado
+  como seguidor. O texto das respostas é extraído do HTML e guardado em texto
+  simples, limitado a 4000 caracteres. Cada ator tem no máximo uma curtida e um
+  impulso por objeto; novas atividades do mesmo tipo atualizam a existente. As
+  interações aparecem na página do ciclo, junto ao registro, ou na página da
+  prática, com contadores e respostas. `Delete` de uma conta remove também suas
+  interações. O Mastodon não oferece o botão de impulso em publicações
+  `followers`; o `Announce` continua aceito pelo protocolo, mas não pode ser
+  disparado por essa interface.
 - **Respostas enviadas:** o dono do ciclo pode responder a uma mensagem recebida
   na própria página do registro. A resposta é uma `Note` em `/respostas/{id}`,
   com `inReplyTo` apontando para a mensagem original, menção ao autor e entrega
@@ -480,15 +500,17 @@ Fluxo implementado:
 
 O esquema está nas migrações `00004_federation.sql` (`actor_keys`,
 `federation_follows`, `federation_activities` e `federation_deliveries`),
-`00006_interactions.sql` (`federation_replies` e `federation_reactions`) e
-`00007_reply_outbound.sql` (respostas enviadas e inbox do autor respondido).
+`00006_interactions.sql` (`federation_replies` e `federation_reactions`),
+`00007_reply_outbound.sql` (respostas enviadas e inbox do autor respondido) e
+`00009_practice_federation.sql` (interações vinculadas a práticas, com alvo
+exclusivo entre registro e prática).
 
 Para validar com uma instância real, a instância precisa ser acessível
 publicamente por HTTPS. Configure `CULTIVAR_LOCAL_DOMAIN` com a URL pública
 (por exemplo, `https://cultivar.example`), exponha a porta local por um túnel ou
-proxy reverso e siga o Actor a partir de uma conta no Mastodon. Práticas ainda
-não são federadas; alterações em registros publicados são enviadas como
-`Update` e a despublicação como `Delete`.
+proxy reverso e siga o Actor a partir de uma conta no Mastodon. Registros do
+diário são federados como `Note` e práticas como `Article`; alterações em
+objetos publicados são enviadas como `Update` e a despublicação como `Delete`.
 
 ## Solução de problemas
 

@@ -79,4 +79,44 @@
     <p>{{.Practice.References}}</p>
   {{end}}
 </section>
+
+{{if .PracticeInteractions.HasAny}}
+  <section class="panel panel-wide entry-interactions">
+    <h2>Interações no Fediverso</h2>
+    <p class="interaction-counts muted">
+      {{with .PracticeInteractions.ReplySummary}}<span>{{.}}</span>{{end}}
+      {{with .PracticeInteractions.LikeSummary}}<span>{{.}}</span>{{end}}
+      {{with .PracticeInteractions.AnnounceSummary}}<span>{{.}}</span>{{end}}
+    </p>
+
+    {{if .PracticeInteractions.Replies}}
+      <h3>Respostas</h3>
+      <ol class="replies">
+        {{range .PracticeInteractions.Replies}}
+          <li class="reply">
+            <p class="reply-meta">
+              {{if .ActorURL}}<a href="{{.ActorURL}}" rel="noopener noreferrer nofollow" target="_blank">{{end}}
+                <strong>{{.ActorLabel}}</strong>
+              {{if .ActorURL}}</a>{{end}}
+              {{with .PublishedLabel}}<span class="muted">· {{.}}</span>{{end}}
+            </p>
+            {{if .Content}}<p class="reply-content">{{.Content}}</p>{{end}}
+          </li>
+        {{end}}
+      </ol>
+    {{end}}
+
+    {{if .PracticeInteractions.Likes}}
+      <p><strong>Curtidas:</strong>
+        {{range $index, $like := .PracticeInteractions.Likes}}{{if $index}} · {{end}}{{if $like.ActorURL}}<a href="{{$like.ActorURL}}" rel="noopener noreferrer nofollow" target="_blank">{{end}}{{$like.ActorLabel}}{{if $like.ActorURL}}</a>{{end}}{{end}}
+      </p>
+    {{end}}
+
+    {{if .PracticeInteractions.Announces}}
+      <p><strong>Impulsos:</strong>
+        {{range $index, $announce := .PracticeInteractions.Announces}}{{if $index}} · {{end}}{{if $announce.ActorURL}}<a href="{{$announce.ActorURL}}" rel="noopener noreferrer nofollow" target="_blank">{{end}}{{$announce.ActorLabel}}{{if $announce.ActorURL}}</a>{{end}}{{end}}
+      </p>
+    {{end}}
+  </section>
+{{end}}
 {{end}}

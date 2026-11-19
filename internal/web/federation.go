@@ -11,6 +11,7 @@ import (
 	"github.com/rede-cultivar/plataform/internal/federation"
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
+	"github.com/rede-cultivar/plataform/internal/practices"
 	"github.com/rede-cultivar/plataform/internal/version"
 )
 
@@ -315,6 +316,48 @@ func (s *server) note(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", cache)
 	writeJSONType(w, http.StatusOK, federation.ActivityContentType, note)
+}
+
+// article publica a representação ActivityPub de uma prática federada.
+//
+// Práticas só são servidas quando estão publicadas e públicas. A página humana
+// continua em /praticas/{id}; este endereço serve apenas ao ActivityPub.
+func (s *server) article(w http.ResponseWriter, r *http.Request) {
+	if s.practices == nil || s.identity == nil {
+		http.Error(w, "artigo não encontrado", http.StatusNotFound)
+		return
+	}
+
+	practice, err := s.practices.FindPractice(r.Context(), "", chi.URLParam(r, "id"))
+	if errors.Is(err, practices.ErrNotFound) {
+		http.Error(w, "artigo não encontrado", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find practice for article", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if practice.Status != practices.StatusPublished || practice.Visibility != practices.VisibilityPublic {
+		http.Error(w, "artigo não encontrado", http.StatusNotFound)
+		return
+	}
+
+	person, err := s.identity.FindPersonByID(r.Context(), practice.AuthorID)
+	if errors.Is(err, identity.ErrNotFound) {
+		http.Error(w, "artigo não encontrado", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find article author", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	article := federation.NewPracticeArticle(s.federationURLs(), *person, *practice)
+
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	writeJSONType(w, http.StatusOK, federation.ActivityContentType, article)
 }
 
 // replyNote publica a representação ActivityPub de uma resposta do Cultivar.

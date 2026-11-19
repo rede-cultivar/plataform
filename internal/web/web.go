@@ -101,11 +101,15 @@ type FederationService interface {
 	PublishEntry(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) error
 	PublishEntryUpdate(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) error
 	PublishEntryDelete(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry) error
+	PublishPractice(ctx context.Context, person identity.Person, practice practices.Practice) error
+	PublishPracticeUpdate(ctx context.Context, person identity.Person, practice practices.Practice) error
+	PublishPracticeDelete(ctx context.Context, person identity.Person, practice practices.Practice) error
 	Outbox(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	Followers(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	Following(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	FollowerProfiles(ctx context.Context, personID string) ([]federation.Follower, error)
 	EntryInteractions(ctx context.Context, entryIDs []string) (map[string]federation.EntryInteractions, error)
+	PracticeInteractions(ctx context.Context, practiceIDs []string) (map[string]federation.EntryInteractions, error)
 	ReplyToInteraction(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, replyID, content string) (*federation.Interaction, error)
 	FindReplyNote(ctx context.Context, replyID string) (federation.Note, error)
 	HandleInbox(ctx context.Context, personID string, r *http.Request) error
@@ -171,20 +175,21 @@ type pageData struct {
 	Bio         string
 	Next        string
 
-	Cycles         []cultivation.Cycle
-	Cycle          *cultivation.Cycle
-	Entries        []cultivation.Entry
-	EntryMedia     map[string][]media.Asset
-	MediaURLs      map[string]string
-	Interactions   map[string]federation.EntryInteractions
-	CycleFilter    cultivation.CycleFilter
-	FormCycle      cultivation.Cycle
-	FormEntry      cultivation.Entry
-	FormPractice   practices.Practice
-	PracticeList   []practices.Practice
-	Practice       *practices.Practice
-	PracticeFilter practices.Filter
-	Practices      []practices.Practice
+	Cycles               []cultivation.Cycle
+	Cycle                *cultivation.Cycle
+	Entries              []cultivation.Entry
+	EntryMedia           map[string][]media.Asset
+	MediaURLs            map[string]string
+	Interactions         map[string]federation.EntryInteractions
+	PracticeInteractions federation.EntryInteractions
+	CycleFilter          cultivation.CycleFilter
+	FormCycle            cultivation.Cycle
+	FormEntry            cultivation.Entry
+	FormPractice         practices.Practice
+	PracticeList         []practices.Practice
+	Practice             *practices.Practice
+	PracticeFilter       practices.Filter
+	Practices            []practices.Practice
 
 	Followers []federation.Follower
 
@@ -335,6 +340,7 @@ func NewRouter(deps Deps) http.Handler {
 	router.Post("/actors/{id}/inbox", s.inbox)
 
 	router.Get("/notas/{id}", s.note)
+	router.Get("/artigos/{id}", s.article)
 	router.Get("/respostas/{id}", s.replyNote)
 	router.Get("/activities/{id}", s.activity)
 
