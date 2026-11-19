@@ -102,6 +102,7 @@ type FederationService interface {
 	PublishEntryDelete(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry) error
 	Outbox(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	Followers(ctx context.Context, personID string) (federation.OrderedCollection, error)
+	Following(ctx context.Context, personID string) (federation.OrderedCollection, error)
 	FollowerProfiles(ctx context.Context, personID string) ([]federation.Follower, error)
 	EntryInteractions(ctx context.Context, entryIDs []string) (map[string]federation.EntryInteractions, error)
 	ReplyToInteraction(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, replyID, content string) (*federation.Interaction, error)

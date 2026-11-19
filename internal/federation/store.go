@@ -131,6 +131,38 @@ func (s *Store) ListFollowers(ctx context.Context, personID string) ([]Follow, e
 	return follows, nil
 }
 
+// ListFollowing lista as pessoas locais seguidas por uma pessoa.
+//
+// A coleção following do Actor reúne as relações locais. Contas remotas seguidas
+// serão incluídas quando o acompanhamento remoto for implementado.
+func (s *Store) ListFollowing(ctx context.Context, personID string) ([]string, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT p.id::text
+		FROM person_follows f
+		JOIN people p ON p.id = f.followed_id
+		WHERE f.follower_id = $1::uuid
+		ORDER BY p.display_name, p.handle
+	`, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}
+
 // ActivityRecord representa uma atividade federada persistida.
 type ActivityRecord struct {
 	ID           string
@@ -286,20 +318,49 @@ func (s *Store) LatestObjectActivity(ctx context.Context, personID, objectID str
 //
 // Apenas atividades Create entram no outbox. Atividades de controle, como
 // Accept, não são publicações e não devem inflar o totalItems exibido por
-// outras instâncias.
+// outras instâncias. Para cada objeto, apenas a Create pública mais recente é
+// considerada, e objetos cuja atividade mais recente é Delete ou que passaram a
+// ser visíveis apenas para seguidores ficam de fora. Assim o outbox não expõe
+// versões já removidas, duplicadas ou restritas.
 func (s *Store) ListOutbox(ctx context.Context, personID string, limit int) ([]ActivityRecord, error) {
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
 
 	rows, err := s.db.Query(ctx, `
-		SELECT `+activityColumns+`
-		FROM federation_activities
-		WHERE person_id = $1::uuid
-		  AND direction = 'outbound'
-		  AND visibility = 'public'
-		  AND activity_type = 'Create'
-		ORDER BY created_at DESC
+		WITH latest AS (
+			SELECT DISTINCT ON (object_id)
+				object_id, activity_type, visibility
+			FROM federation_activities
+			WHERE person_id = $1::uuid
+			  AND direction = 'outbound'
+			ORDER BY object_id, created_at DESC
+		),
+		creates AS (
+			SELECT DISTINCT ON (object_id)
+				id, person_id, activity_id, activity_type, object_id, payload,
+				visibility, created_at
+			FROM federation_activities
+			WHERE person_id = $1::uuid
+			  AND direction = 'outbound'
+			  AND activity_type = 'Create'
+			  AND visibility = 'public'
+			ORDER BY object_id, created_at DESC
+		)
+		SELECT
+			creates.id::text,
+			creates.person_id::text,
+			creates.activity_id,
+			creates.activity_type,
+			creates.object_id,
+			creates.payload,
+			creates.visibility,
+			creates.created_at
+		FROM creates
+		JOIN latest ON latest.object_id = creates.object_id
+		WHERE latest.activity_type IN ('Create', 'Update')
+		  AND latest.visibility = 'public'
+		ORDER BY creates.created_at DESC
 		LIMIT $2
 	`, personID, limit)
 	if err != nil {

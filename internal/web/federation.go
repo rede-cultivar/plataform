@@ -171,6 +171,17 @@ func (s *server) actorFollowing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.federation != nil {
+		collection, err := s.federation.Following(r.Context(), person.ID)
+		if err != nil {
+			s.logger.Error("load actor following", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		s.writeJSONCollection(w, collection)
+		return
+	}
+
 	s.writeCollection(w, s.federationURLs().Following(person.ID))
 }
 

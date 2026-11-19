@@ -488,6 +488,31 @@ func (s *Service) Followers(ctx context.Context, personID string) (OrderedCollec
 	}, nil
 }
 
+// Following devolve a coleção de pessoas seguidas pelo Actor.
+//
+// A coleção inclui as relações locais, que são imediatas e não passam por
+// aprovação. Contas remotas seguidas entram aqui quando o acompanhamento remoto
+// estiver disponível.
+func (s *Service) Following(ctx context.Context, personID string) (OrderedCollection, error) {
+	ids, err := s.store.ListFollowing(ctx, personID)
+	if err != nil {
+		return OrderedCollection{}, err
+	}
+
+	items := make([]any, 0, len(ids))
+	for _, id := range ids {
+		items = append(items, s.urls.Actor(id))
+	}
+
+	return OrderedCollection{
+		Context:      activityStreamsContext,
+		ID:           s.urls.Following(personID),
+		Type:         "OrderedCollection",
+		TotalItems:   len(items),
+		OrderedItems: items,
+	}, nil
+}
+
 // FindActivity devolve o documento de uma atividade de saída.
 func (s *Service) FindActivity(ctx context.Context, activityID string) (json.RawMessage, error) {
 	activity, err := s.store.FindActivity(ctx, activityID)

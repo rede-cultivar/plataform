@@ -123,11 +123,11 @@ Fediverso:
 | `GET /.well-known/nodeinfo` | Descoberta do NodeInfo 2.0 |
 | `GET /nodeinfo/2.0` | Informações e estatísticas da instância |
 | `GET /actors/{id}` | Actor ActivityPub (`Person`), incluindo a chave pública |
-| `GET /actors/{id}/outbox` | Publicações públicas de saída (apenas `Create`) |
-| `GET /actors/{id}/followers` | Seguidores aceitos |
-| `GET /actors/{id}/following` | Pessoas seguidas (coleção vazia por enquanto) |
+| `GET /actors/{id}/outbox` | Publicações públicas de saída (apenas `Create`, sem versões removidas, restritas ou duplicadas) |
+| `GET /actors/{id}/followers` | Seguidores remotos aceitos |
+| `GET /actors/{id}/following` | Pessoas seguidas na instância (contas remotas pendentes) |
 | `POST /actors/{id}/inbox` | Recebe atividades com assinatura HTTP válida |
-| `GET /notas/{id}` | Representação `Note` de um registro público |
+| `GET /notas/{id}` | Representação `Note` de um registro federado (token para `followers`) |
 | `GET /activities/{id}` | Atividade federada de saída já publicada |
 
 Os identificadores de Actor são opacos e estáveis, no formato
@@ -245,6 +245,8 @@ protegidas pela mesma regra.
 Limitações atuais:
 
 - Práticas ainda não são federadas; apenas registros do diário geram `Note`.
+- A coleção `following` do Actor lista apenas as pessoas seguidas nesta
+  instância; o acompanhamento de contas remotas ainda não está implementado.
 - O token de capacidade é derivado do identificador e do segredo da instância,
   não de cada seguidor. Não há revogação individual: um link já entregue
   continua válido enquanto o conteúdo permanecer federado.
@@ -401,6 +403,8 @@ Fluxo implementado:
   espécie e variedade), traz o contexto do cultivo (ambiente, local e início),
   a data e o estágio do registro, o relato, medidas, intervenções, ocorrências,
   a prática vinculada e o link para a página completa. As fotos vão como anexos.
+  O outbox do Actor lista apenas a `Create` pública mais recente de cada objeto;
+  versões removidas, restritas a seguidores ou substituídas não aparecem.
 - **Atualização:** ao editar um registro federado ou incluir/remover fotos, a
   `Note` é reconstruída e distribuída em uma atividade `Update`, com o mesmo
   identificador. A instância remota substitui o conteúdo e os anexos, exibindo a

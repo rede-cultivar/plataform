@@ -27,6 +27,7 @@ type fakeFederation struct {
 	key              *federation.KeyPair
 	outbox           federation.OrderedCollection
 	followers        federation.OrderedCollection
+	following        federation.OrderedCollection
 	profiles         []federation.Follower
 	profilesErr      error
 	interactions     map[string]federation.EntryInteractions
@@ -96,6 +97,13 @@ func (f *fakeFederation) Followers(_ context.Context, personID string) (federati
 		return f.followers, nil
 	}
 	return federation.NewOrderedCollection(federation.NewURLs(f.base).Followers(personID)), nil
+}
+
+func (f *fakeFederation) Following(_ context.Context, personID string) (federation.OrderedCollection, error) {
+	if f.following.ID != "" {
+		return f.following, nil
+	}
+	return federation.NewOrderedCollection(federation.NewURLs(f.base).Following(personID)), nil
 }
 
 func (f *fakeFederation) FollowerProfiles(_ context.Context, _ string) ([]federation.Follower, error) {
@@ -345,6 +353,34 @@ func TestActorCollectionsAreEmpty(t *testing.T) {
 		if collection.TotalItems != 0 || len(collection.OrderedItems) != 0 {
 			t.Errorf("%s is not empty: %+v", name, collection)
 		}
+	}
+}
+
+func TestActorFollowingListsLocalFollows(t *testing.T) {
+	router, _, service := newFederationTestRouterWithService(t)
+	service.following = federation.OrderedCollection{
+		Context:      "https://www.w3.org/ns/activitystreams",
+		ID:           "http://localhost:8080/actors/person-1/following",
+		Type:         "OrderedCollection",
+		TotalItems:   1,
+		OrderedItems: []any{"http://localhost:8080/actors/person-2"},
+	}
+
+	request := httptest.NewRequest(http.MethodGet, "/actors/person-1/following", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+
+	var collection federation.OrderedCollection
+	decodeJSON(t, response, &collection)
+	if collection.TotalItems != 1 || len(collection.OrderedItems) != 1 {
+		t.Fatalf("following = %+v, want one actor", collection)
+	}
+	if collection.OrderedItems[0] != "http://localhost:8080/actors/person-2" {
+		t.Errorf("item = %v, want person-2 actor", collection.OrderedItems[0])
 	}
 }
 
