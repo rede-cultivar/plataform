@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
+	"github.com/rede-cultivar/plataform/internal/federation"
 	"github.com/rede-cultivar/plataform/internal/identity"
 	"github.com/rede-cultivar/plataform/internal/media"
 )
@@ -102,6 +103,20 @@ func (f *fakeMedia) CanView(_ context.Context, id, viewerID string) (bool, error
 		if !f.publicEntries[entryID] {
 			continue
 		}
+		for _, mediaID := range ids {
+			if mediaID == id {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (f *fakeMedia) CanViewFederated(_ context.Context, id string) (bool, error) {
+	if _, ok := f.assets[id]; !ok {
+		return false, nil
+	}
+	for _, ids := range f.attachments {
 		for _, mediaID := range ids {
 			if mediaID == id {
 				return true, nil
@@ -498,6 +513,44 @@ func TestMediaHiddenForPrivateCycle(t *testing.T) {
 	owner := getPage(router, "/media/asset-1", session)
 	if owner.Code != http.StatusOK {
 		t.Fatalf("owner status = %d, want %d", owner.Code, http.StatusOK)
+	}
+}
+
+func TestMediaFollowersEntryRequiresToken(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityFollowers)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:         "entry-1",
+		CycleID:    "cycle-1",
+		AuthorID:   "person-1",
+		OccurredAt: time.Now(),
+		Visibility: cultivation.EntryVisibilityInherit,
+		CreatedAt:  time.Now(),
+	}}
+
+	mediaService := newFakeMedia()
+	mediaService.assets["asset-1"] = &media.Asset{ID: "asset-1", OwnerID: "person-1", OriginalName: "foto.png", ContentType: "image/png", Width: 1, Height: 1, Status: media.StatusReady}
+	mediaService.data["asset-1"] = testPNG(t)
+	mediaService.attachments["entry-1"] = []string{"asset-1"}
+
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice(), mediaService)
+
+	anonymous := getPage(router, "/media/asset-1")
+	if anonymous.Code != http.StatusNotFound {
+		t.Fatalf("anonymous status = %d, want %d", anonymous.Code, http.StatusNotFound)
+	}
+
+	urls := federation.NewURLsWithSecret("http://localhost:8080", "segredo-de-teste")
+	token := url.QueryEscape(urls.MediaToken("asset-1"))
+	allowed := getPage(router, "/media/asset-1?token="+token)
+	if allowed.Code != http.StatusOK {
+		t.Fatalf("token status = %d, want %d; body = %s", allowed.Code, http.StatusOK, allowed.Body.String())
+	}
+
+	wrongToken := getPage(router, "/media/asset-1?token=invalido")
+	if wrongToken.Code != http.StatusNotFound {
+		t.Fatalf("invalid token status = %d, want %d", wrongToken.Code, http.StatusNotFound)
 	}
 }
 

@@ -116,7 +116,7 @@ func runServe() error {
 
 	federationService := federation.NewService(
 		db,
-		federation.NewURLs(cfg.BaseURL()),
+		federation.NewURLsWithSecret(cfg.BaseURL(), cfg.SecretKey),
 		logger,
 		!cfg.IsProduction(),
 	)
@@ -192,7 +192,7 @@ func runWorker() error {
 
 	federationService := federation.NewService(
 		db,
-		federation.NewURLs(cfg.BaseURL()),
+		federation.NewURLsWithSecret(cfg.BaseURL(), cfg.SecretKey),
 		logger,
 		!cfg.IsProduction(),
 	)
@@ -340,7 +340,7 @@ func runFederation(args []string) error {
 	identityService := identity.NewService(db, cfg.SessionIdleTimeout, cfg.SessionAbsoluteTimeout)
 	federationService := federation.NewService(
 		db,
-		federation.NewURLs(cfg.BaseURL()),
+		federation.NewURLsWithSecret(cfg.BaseURL(), cfg.SecretKey),
 		logger,
 		!cfg.IsProduction(),
 	)
@@ -363,7 +363,7 @@ func runFederation(args []string) error {
 		return err
 	}
 
-	if entry.EffectiveVisibility(cycle) != cultivation.VisibilityPublic {
+	if entry.EffectiveVisibility(cycle) == cultivation.VisibilityPrivate {
 		if err := federationService.PublishEntryDelete(ctx, *person, *cycle, *entry); err != nil {
 			return err
 		}

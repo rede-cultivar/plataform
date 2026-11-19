@@ -186,6 +186,38 @@ func (s *Store) CanView(ctx context.Context, id, viewerID string) (bool, error) 
 	return allowed, err
 }
 
+// CanViewFederated informa se a mídia pertence a conteúdo federado.
+//
+// É usado junto com o token de capacidade das publicações restritas a
+// seguidores: o token libera a imagem, mas a consulta confirma que ela está
+// vinculada a um registro ou prática que pode ser federado, evitando expor
+// mídia de conteúdo privado.
+func (s *Store) CanViewFederated(ctx context.Context, id string) (bool, error) {
+	var allowed bool
+	err := s.db.QueryRow(ctx, `
+		SELECT
+			EXISTS (
+				SELECT 1
+				FROM cultivation_entry_media em
+				JOIN cultivation_entries e ON e.id = em.entry_id
+				JOIN cultivation_cycles c ON c.id = e.cycle_id
+				WHERE em.media_id::text = $1
+				  AND c.status <> 'archived'
+				  AND c.visibility <> 'private'
+				  AND e.visibility <> 'private'
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM practice_media pm
+				JOIN practices p ON p.id = pm.practice_id
+				WHERE pm.media_id::text = $1
+				  AND p.status = 'published'
+				  AND p.visibility = 'public'
+			)
+	`, id).Scan(&allowed)
+	return allowed, err
+}
+
 func scanAsset(row rowScanner) (*Asset, error) {
 	var asset Asset
 	err := row.Scan(

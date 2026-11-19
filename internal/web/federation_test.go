@@ -405,6 +405,7 @@ func newFederationContentRouter(
 			InstanceName:           "Cultivar Test",
 			LocalDomain:            "localhost:8080",
 			LogLevel:               "error",
+			SecretKey:              "segredo-de-teste",
 			SessionIdleTimeout:     time.Hour,
 			SessionAbsoluteTimeout: 24 * time.Hour,
 		},
@@ -502,6 +503,55 @@ func TestNoteHidesPrivateEntry(t *testing.T) {
 
 	if response.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusNotFound)
+	}
+}
+
+func TestNoteRequiresTokenForFollowersEntry(t *testing.T) {
+	identityService := newFakeIdentity()
+	identityService.people["ana"] = &identity.Person{
+		ID:          "person-1",
+		Handle:      "ana",
+		DisplayName: "Ana Silva",
+		CreatedAt:   time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC),
+	}
+
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityFollowers)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:         "entry-1",
+		CycleID:    "cycle-1",
+		AuthorID:   "person-1",
+		OccurredAt: time.Date(2026, 9, 10, 9, 30, 0, 0, time.UTC),
+		Body:       "Registro para seguidores.",
+		Visibility: cultivation.EntryVisibilityInherit,
+		CreatedAt:  time.Date(2026, 9, 10, 9, 30, 0, 0, time.UTC),
+	}}
+
+	router := newFederationContentRouter(t, identityService, cultivationService, newFakeMedia(), newFakeFederation(t))
+
+	withoutToken := httptest.NewRequest(http.MethodGet, "/notas/entry-1", nil)
+	withoutTokenResponse := httptest.NewRecorder()
+	router.ServeHTTP(withoutTokenResponse, withoutToken)
+	if withoutTokenResponse.Code != http.StatusNotFound {
+		t.Fatalf("status without token = %d, want %d", withoutTokenResponse.Code, http.StatusNotFound)
+	}
+
+	urls := federation.NewURLsWithSecret("http://localhost:8080", "segredo-de-teste")
+	request := httptest.NewRequest(http.MethodGet, "/notas/entry-1?token="+url.QueryEscape(urls.NoteToken("entry-1")), nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+
+	var note federation.Note
+	decodeJSON(t, response, &note)
+	if len(note.To) != 1 || note.To[0] != urls.Followers("person-1") {
+		t.Errorf("To = %v, want followers collection", note.To)
+	}
+	if len(note.CC) != 0 {
+		t.Errorf("CC = %v, want empty", note.CC)
 	}
 }
 

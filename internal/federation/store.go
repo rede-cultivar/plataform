@@ -217,13 +217,13 @@ func (s *Store) FindActivity(ctx context.Context, activityID string) (*ActivityR
 	return activity, nil
 }
 
-// FindPublicReplyObject devolve o payload da publicação de saída de uma
+// FindFederatedReplyObject devolve o payload da publicação de saída de uma
 // resposta cujo registro ainda pode ser federado.
 //
 // A consulta cruza a resposta com o registro e o ciclo para não servir uma Note
-// pública depois que o registro deixou de ser público. O payload é exatamente o
+// depois que o registro deixou de ser federado. O payload é exatamente o
 // documento distribuído aos seguidores.
-func (s *Store) FindPublicReplyObject(ctx context.Context, objectID string) (json.RawMessage, error) {
+func (s *Store) FindFederatedReplyObject(ctx context.Context, objectID string) (json.RawMessage, error) {
 	var payload json.RawMessage
 	err := s.db.QueryRow(ctx, `
 		SELECT a.payload
@@ -233,11 +233,11 @@ func (s *Store) FindPublicReplyObject(ctx context.Context, objectID string) (jso
 		JOIN cultivation_cycles c ON c.id = e.cycle_id
 		WHERE a.object_id = $1
 		  AND a.direction = 'outbound'
-		  AND a.visibility = 'public'
+		  AND a.visibility IN ('public', 'followers')
 		  AND a.activity_type = 'Create'
 		  AND r.direction = 'outbound'
-		  AND c.visibility = 'public'
-		  AND e.visibility IN ('inherit', 'public')
+		  AND c.visibility <> 'private'
+		  AND e.visibility <> 'private'
 		ORDER BY a.created_at DESC
 		LIMIT 1
 	`, objectID).Scan(&payload)
@@ -250,26 +250,36 @@ func (s *Store) FindPublicReplyObject(ctx context.Context, objectID string) (jso
 	return payload, nil
 }
 
-// LatestObjectActivityType devolve o tipo da atividade de saída mais recente
-// que se refere a um objeto, ou vazio quando o objeto nunca foi publicado.
-func (s *Store) LatestObjectActivityType(ctx context.Context, personID, objectID string) (string, error) {
-	var activityType string
+// ObjectActivity descreve a atividade de saída mais recente de um objeto.
+type ObjectActivity struct {
+	Type       string
+	Visibility string
+}
+
+// LatestObjectActivity devolve o tipo e a visibilidade da atividade de saída
+// mais recente que se refere a um objeto.
+//
+// O identificador do objeto é sempre armazenado sem o token de capacidade, para
+// que a consulta continue encontrando a publicação mesmo quando a visibilidade
+// muda entre público e seguidores.
+func (s *Store) LatestObjectActivity(ctx context.Context, personID, objectID string) (ObjectActivity, error) {
+	var activity ObjectActivity
 	err := s.db.QueryRow(ctx, `
-		SELECT activity_type
+		SELECT activity_type, visibility
 		FROM federation_activities
 		WHERE person_id = $1::uuid
 		  AND direction = 'outbound'
 		  AND object_id = $2
 		ORDER BY created_at DESC
 		LIMIT 1
-	`, personID, objectID).Scan(&activityType)
+	`, personID, objectID).Scan(&activity.Type, &activity.Visibility)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
+		return ObjectActivity{}, nil
 	}
 	if err != nil {
-		return "", err
+		return ObjectActivity{}, err
 	}
-	return activityType, nil
+	return activity, nil
 }
 
 // ListOutbox lista as publicações públicas de saída de uma pessoa.
@@ -290,6 +300,74 @@ func (s *Store) ListOutbox(ctx context.Context, personID string, limit int) ([]A
 		  AND visibility = 'public'
 		  AND activity_type = 'Create'
 		ORDER BY created_at DESC
+		LIMIT $2
+	`, personID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	activities := make([]ActivityRecord, 0)
+	for rows.Next() {
+		activity, err := scanActivity(rows)
+		if err != nil {
+			return nil, err
+		}
+		activities = append(activities, *activity)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return activities, nil
+}
+
+// ListBackfill lista as publicações mais recentes que um novo seguidor pode
+// receber.
+//
+// Diferente do outbox, o backfill inclui conteúdo restrito a seguidores, pois
+// ele só é enviado depois que o Follow foi aceito. Para cada objeto, apenas a
+// Create mais recente é considerada, evitando reenviar versões substituídas
+// após uma troca de visibilidade. Objetos cuja atividade mais recente é Delete
+// ficam de fora, para que um novo seguidor não receba conteúdo já removido.
+func (s *Store) ListBackfill(ctx context.Context, personID string, limit int) ([]ActivityRecord, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+
+	rows, err := s.db.Query(ctx, `
+		WITH latest AS (
+			SELECT DISTINCT ON (object_id)
+				object_id, activity_type
+			FROM federation_activities
+			WHERE person_id = $1::uuid
+			  AND direction = 'outbound'
+			ORDER BY object_id, created_at DESC
+		),
+		creates AS (
+			SELECT DISTINCT ON (object_id)
+				id, person_id, activity_id, activity_type, object_id, payload,
+				visibility, created_at
+			FROM federation_activities
+			WHERE person_id = $1::uuid
+			  AND direction = 'outbound'
+			  AND activity_type = 'Create'
+			  AND visibility IN ('public', 'followers')
+			ORDER BY object_id, created_at DESC
+		)
+		SELECT
+			creates.id::text,
+			creates.person_id::text,
+			creates.activity_id,
+			creates.activity_type,
+			creates.object_id,
+			creates.payload,
+			creates.visibility,
+			creates.created_at
+		FROM creates
+		JOIN latest ON latest.object_id = creates.object_id
+		WHERE latest.activity_type IN ('Create', 'Update')
+		ORDER BY creates.created_at DESC
 		LIMIT $2
 	`, personID, limit)
 	if err != nil {

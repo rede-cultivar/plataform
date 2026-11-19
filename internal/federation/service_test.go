@@ -7,7 +7,47 @@ import (
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/rede-cultivar/plataform/internal/cultivation"
 )
+
+func TestActivityVisibility(t *testing.T) {
+	tests := []struct {
+		name       string
+		visibility cultivation.Visibility
+		want       string
+		wantOK     bool
+	}{
+		{name: "public", visibility: cultivation.VisibilityPublic, want: "public", wantOK: true},
+		{name: "followers", visibility: cultivation.VisibilityFollowers, want: "followers", wantOK: true},
+		{name: "private", visibility: cultivation.VisibilityPrivate, wantOK: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, ok := activityVisibility(test.visibility)
+			if got != test.want || ok != test.wantOK {
+				t.Errorf("activityVisibility(%q) = (%q, %v), want (%q, %v)", test.visibility, got, ok, test.want, test.wantOK)
+			}
+		})
+	}
+}
+
+func TestVisibilityValue(t *testing.T) {
+	tests := map[string]cultivation.Visibility{
+		"public":    cultivation.VisibilityPublic,
+		"followers": cultivation.VisibilityFollowers,
+		"private":   cultivation.VisibilityPrivate,
+		"":          cultivation.VisibilityPrivate,
+		"outro":     cultivation.VisibilityPrivate,
+	}
+
+	for value, want := range tests {
+		if got := visibilityValue(value); got != want {
+			t.Errorf("visibilityValue(%q) = %q, want %q", value, got, want)
+		}
+	}
+}
 
 func TestOutboxItemsKeepsOnlyPublicCreates(t *testing.T) {
 	activities := []ActivityRecord{

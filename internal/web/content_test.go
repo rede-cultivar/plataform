@@ -444,6 +444,7 @@ func contentTestDeps(identityService IdentityService, cultivationService Cultiva
 			InstanceName:           "Cultivar Test",
 			LocalDomain:            "localhost:8080",
 			LogLevel:               "error",
+			SecretKey:              "segredo-de-teste",
 			SessionIdleTimeout:     time.Hour,
 			SessionAbsoluteTimeout: 24 * time.Hour,
 		},
@@ -1097,6 +1098,78 @@ func TestCycleEditToPublicFederatesEntries(t *testing.T) {
 	}
 }
 
+func TestCycleEditToFollowersFederatesEntries(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPrivate)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro privado.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	federationService := newFakeFederation(t)
+
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1/editar", session)
+
+	response := postForm(router, "/diario/cycle-1/editar",
+		cycleEditValues(csrf.Value, "Tomates da varanda", "followers"), session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if federationService.updateCalls != 1 {
+		t.Fatalf("updateCalls = %d, want 1", federationService.updateCalls)
+	}
+	if federationService.deleteCalls != 0 {
+		t.Errorf("deleteCalls = %d, want 0", federationService.deleteCalls)
+	}
+}
+
+func TestCycleEditFromFollowersToPrivateDeletesEntries(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityFollowers)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro para seguidores.",
+		Visibility:   cultivation.EntryVisibilityInherit,
+		CreatedAt:    time.Now(),
+	}}
+	federationService := newFakeFederation(t)
+
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1/editar", session)
+
+	response := postForm(router, "/diario/cycle-1/editar",
+		cycleEditValues(csrf.Value, "Tomates da varanda", "private"), session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if federationService.deleteCalls != 1 {
+		t.Fatalf("deleteCalls = %d, want 1", federationService.deleteCalls)
+	}
+	if federationService.updateCalls != 0 {
+		t.Errorf("updateCalls = %d, want 0", federationService.updateCalls)
+	}
+}
+
 func TestPracticeEditFormAndUpdate(t *testing.T) {
 	identityService := newFakeIdentity()
 	practiceService := newFakePractice()
@@ -1337,6 +1410,49 @@ func TestEntryEditToPrivateFederatesDelete(t *testing.T) {
 	}
 	if federationService.lastDelete.ID != "entry-1" {
 		t.Errorf("deleted entry = %q, want entry-1", federationService.lastDelete.ID)
+	}
+}
+
+func TestEntryEditToFollowersFederatesUpdate(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["cycle-1"] = sampleCycle("cycle-1", cultivation.VisibilityPublic)
+	cultivationService.entries["cycle-1"] = []cultivation.Entry{{
+		ID:           "entry-1",
+		CycleID:      "cycle-1",
+		AuthorID:     "person-1",
+		AuthorHandle: "ana",
+		OccurredAt:   time.Now(),
+		Body:         "Registro público.",
+		Visibility:   cultivation.EntryVisibilityPublic,
+		CreatedAt:    time.Now(),
+	}}
+	federationService := newFakeFederation(t)
+
+	router := newContentTestRouterWithFederation(
+		t, identityService, cultivationService, newFakePractice(), nil, federationService,
+	)
+	session := loginAsAna(t, router, identityService)
+	csrf := csrfFor(t, router, "/diario/cycle-1/registros/entry-1/editar", session)
+
+	response := postForm(router, "/diario/cycle-1/registros/entry-1/editar", url.Values{
+		"csrf_token":  {csrf.Value},
+		"occurred_at": {time.Now().Format("2006-01-02T15:04")},
+		"body":        {"Registro para seguidores."},
+		"visibility":  {"followers"},
+	}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if federationService.updateCalls != 1 {
+		t.Fatalf("updateCalls = %d, want 1", federationService.updateCalls)
+	}
+	if federationService.deleteCalls != 0 {
+		t.Errorf("deleteCalls = %d, want 0", federationService.deleteCalls)
+	}
+	if federationService.lastUpdate.Visibility != cultivation.EntryVisibilityFollowers {
+		t.Errorf("updated visibility = %q, want followers", federationService.lastUpdate.Visibility)
 	}
 }
 

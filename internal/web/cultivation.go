@@ -307,30 +307,37 @@ func (s *server) cycleEdit(w http.ResponseWriter, r *http.Request) {
 
 // reconcileCycleFederation mantém as publicações alinhadas após editar um ciclo.
 //
-// Registros que deixaram de ser públicos recebem Delete. Quando o ciclo passa a
-// ser público ou quando muda um campo usado no cartão, as publicações são
-// redistribuídas com Update; registros ainda não federados são publicados pela
-// primeira vez.
+// Registros que deixaram de ser federados recebem Delete. Quando o ciclo muda a
+// visibilidade efetiva de um registro ou um campo usado no cartão, as
+// publicações são redistribuídas; registros ainda não federados são publicados
+// pela primeira vez.
 func (s *server) reconcileCycleFederation(ctx context.Context, person identity.Person, before, after cultivation.Cycle, entries []cultivation.Entry) {
 	if s.federation == nil {
 		return
 	}
 
 	cardChanged := cycleCardChanged(before, after)
-	becamePublic := before.Visibility != cultivation.VisibilityPublic &&
-		after.Visibility == cultivation.VisibilityPublic
 
 	for _, entry := range entries {
-		if entry.EffectiveVisibility(&after) == cultivation.VisibilityPublic {
-			if cardChanged || becamePublic {
-				s.publishEntryUpdate(ctx, person, after, entry)
+		beforeVisibility := entry.EffectiveVisibility(&before)
+		afterVisibility := entry.EffectiveVisibility(&after)
+
+		if !federated(afterVisibility) {
+			if federated(beforeVisibility) {
+				s.publishEntryDelete(ctx, person, after, entry)
 			}
 			continue
 		}
-		if entry.EffectiveVisibility(&before) == cultivation.VisibilityPublic {
-			s.publishEntryDelete(ctx, person, after, entry)
+		if cardChanged || beforeVisibility != afterVisibility {
+			s.publishEntryUpdate(ctx, person, after, entry)
 		}
 	}
+}
+
+// federated informa se a visibilidade efetiva pode ser publicada no Fediverso.
+func federated(visibility cultivation.Visibility) bool {
+	return visibility == cultivation.VisibilityPublic ||
+		visibility == cultivation.VisibilityFollowers
 }
 
 // cycleCardChanged informa se a edição alterou campos usados no cartão federado.
@@ -488,7 +495,7 @@ func (s *server) entryCreate(w http.ResponseWriter, r *http.Request) {
 		attached = append(attached, *asset)
 	}
 
-	if s.federation != nil && entry.EffectiveVisibility(cycle) == cultivation.VisibilityPublic {
+	if s.federation != nil && federated(entry.EffectiveVisibility(cycle)) {
 		if err := s.federation.PublishEntry(r.Context(), account.Person, *cycle, *entry, attached); err != nil {
 			s.logger.Warn("publish cultivation entry", "entry", entry.ID, "error", err)
 		}
@@ -689,9 +696,11 @@ func (s *server) entryEdit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if updated.EffectiveVisibility(cycle) == cultivation.VisibilityPublic {
+	beforeVisibility := entry.EffectiveVisibility(cycle)
+	afterVisibility := updated.EffectiveVisibility(cycle)
+	if federated(afterVisibility) {
 		s.publishEntryUpdate(r.Context(), account.Person, *cycle, *updated)
-	} else if entry.EffectiveVisibility(cycle) == cultivation.VisibilityPublic {
+	} else if federated(beforeVisibility) {
 		s.publishEntryDelete(r.Context(), account.Person, *cycle, *updated)
 	}
 
@@ -700,7 +709,7 @@ func (s *server) entryEdit(w http.ResponseWriter, r *http.Request) {
 
 // entryReply publica uma resposta a uma mensagem recebida no Fediverso.
 //
-// Só o dono do ciclo pode responder e apenas em registros ainda públicos. A
+// Só o dono do ciclo pode responder e apenas em registros ainda federados. A
 // resposta é persistida e entregue de forma assíncrona pelo worker.
 func (s *server) entryReply(w http.ResponseWriter, r *http.Request) {
 	account := accountFrom(r.Context())
@@ -752,7 +761,7 @@ func (s *server) entryReply(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "operação não permitida", http.StatusForbidden)
 		return
 	}
-	if entry.EffectiveVisibility(cycle) != cultivation.VisibilityPublic {
+	if !federated(entry.EffectiveVisibility(cycle)) {
 		http.Redirect(w, r, entryAnchor(cycleID, entryID, "publico"), http.StatusSeeOther)
 		return
 	}
@@ -789,10 +798,11 @@ func (s *server) entryReply(w http.ResponseWriter, r *http.Request) {
 
 // publishEntryUpdate redistribui uma publicação após alterações no registro.
 //
-// A atividade Update só é enviada quando o registro é público. As fotos são
-// recarregadas para refletir inclusões e remoções feitas no formulário.
+// A atividade é enviada para registros públicos e para registros visíveis
+// apenas para seguidores. As fotos são recarregadas para refletir inclusões e
+// remoções feitas no formulário.
 func (s *server) publishEntryUpdate(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry) {
-	if s.federation == nil || entry.EffectiveVisibility(&cycle) != cultivation.VisibilityPublic {
+	if s.federation == nil || !federated(entry.EffectiveVisibility(&cycle)) {
 		return
 	}
 
@@ -812,7 +822,7 @@ func (s *server) publishEntryUpdate(ctx context.Context, person identity.Person,
 }
 
 // publishEntryDelete remove do Fediverso uma publicação que deixou de ser
-// pública, evitando que o registro continue visível em instâncias remotas.
+// federada, evitando que o registro continue visível em instâncias remotas.
 func (s *server) publishEntryDelete(ctx context.Context, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry) {
 	if s.federation == nil {
 		return

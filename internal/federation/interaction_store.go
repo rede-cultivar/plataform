@@ -8,28 +8,53 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// PublicEntryOwner devolve a pessoa responsável por um registro público.
+// FederatedEntryOwner devolve a pessoa responsável e a visibilidade efetiva de
+// um registro que pode ser federado.
 //
-// A consulta só considera registros que podem ser federados: ciclo público e
-// visibilidade do registro herdada ou pública. Interações para outros registros
-// são ignoradas para não criar vínculos com conteúdo privado.
-func (s *Store) PublicEntryOwner(ctx context.Context, entryID string) (string, error) {
-	var personID string
+// A consulta considera registros públicos e registros visíveis apenas para
+// seguidores. Interações para conteúdo privado são ignoradas para não criar
+// vínculos com informação restrita.
+func (s *Store) FederatedEntryOwner(ctx context.Context, entryID string) (string, string, error) {
+	var personID, visibility string
 	err := s.db.QueryRow(ctx, `
-		SELECT c.person_id::text
+		SELECT
+			c.person_id::text,
+			CASE
+				WHEN c.visibility = 'public'
+				  AND e.visibility IN ('inherit', 'public') THEN 'public'
+				ELSE 'followers'
+			END
 		FROM cultivation_entries e
 		JOIN cultivation_cycles c ON c.id = e.cycle_id
 		WHERE e.id::text = $1
-		  AND c.visibility = 'public'
-		  AND e.visibility IN ('inherit', 'public')
-	`, entryID).Scan(&personID)
+		  AND c.visibility <> 'private'
+		  AND e.visibility <> 'private'
+	`, entryID).Scan(&personID, &visibility)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", ErrNotFound
+		return "", "", ErrNotFound
 	}
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	return personID, nil
+	return personID, visibility, nil
+}
+
+// IsRemoteFollower informa se um Actor remoto segue a pessoa e teve o Follow
+// aceito.
+//
+// Interações em conteúdo restrito só são aceitas de seguidores confirmados.
+func (s *Store) IsRemoteFollower(ctx context.Context, personID, actorID string) (bool, error) {
+	var following bool
+	err := s.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM federation_follows
+			WHERE person_id = $1::uuid
+			  AND actor_id = $2
+			  AND accepted_at IS NOT NULL
+		)
+	`, personID, actorID).Scan(&following)
+	return following, err
 }
 
 // UpsertReply grava ou atualiza uma resposta recebida.

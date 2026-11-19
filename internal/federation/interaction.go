@@ -338,7 +338,7 @@ func (s *Service) handleReply(ctx context.Context, personID string, remote *Remo
 	if !ok {
 		return false, nil
 	}
-	owner, err := s.store.PublicEntryOwner(ctx, entryID)
+	owner, visibility, err := s.store.FederatedEntryOwner(ctx, entryID)
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
@@ -346,6 +346,13 @@ func (s *Service) handleReply(ctx context.Context, personID string, remote *Remo
 		return false, err
 	}
 	if owner != personID {
+		return false, nil
+	}
+	allowed, err := s.allowedInteraction(ctx, personID, visibility, remote.ID)
+	if err != nil {
+		return false, err
+	}
+	if !allowed {
 		return false, nil
 	}
 
@@ -382,7 +389,25 @@ func (s *Service) handleReplyUpdate(ctx context.Context, personID string, remote
 	if payload.AttributedTo != "" && !sameURL(payload.AttributedTo, remote.ID) {
 		return true, fmt.Errorf("%w: resposta atribuída a outro Actor", ErrInvalidActivity)
 	}
-	if _, ok := entryIDFromNoteURL(s.urls, payload.InReplyTo); !ok {
+	entryID, ok := entryIDFromNoteURL(s.urls, payload.InReplyTo)
+	if !ok {
+		return false, nil
+	}
+	owner, visibility, err := s.store.FederatedEntryOwner(ctx, entryID)
+	if errors.Is(err, ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if owner != personID {
+		return false, nil
+	}
+	allowed, err := s.allowedInteraction(ctx, personID, visibility, remote.ID)
+	if err != nil {
+		return false, err
+	}
+	if !allowed {
 		return false, nil
 	}
 
@@ -399,7 +424,7 @@ func (s *Service) handleReaction(ctx context.Context, personID string, remote *R
 	if !ok {
 		return false, nil
 	}
-	owner, err := s.store.PublicEntryOwner(ctx, entryID)
+	owner, visibility, err := s.store.FederatedEntryOwner(ctx, entryID)
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
@@ -407,6 +432,13 @@ func (s *Service) handleReaction(ctx context.Context, personID string, remote *R
 		return false, err
 	}
 	if owner != personID {
+		return false, nil
+	}
+	allowed, err := s.allowedInteraction(ctx, personID, visibility, remote.ID)
+	if err != nil {
+		return false, err
+	}
+	if !allowed {
 		return false, nil
 	}
 
@@ -426,6 +458,17 @@ func (s *Service) handleReaction(ctx context.Context, personID string, remote *R
 	}
 
 	return true, s.recordInbound(ctx, personID, activity, body)
+}
+
+// allowedInteraction informa se o Actor remoto pode interagir com o registro.
+//
+// Conteúdo público aceita qualquer Actor. Conteúdo restrito a seguidores só
+// aceita quem segue a pessoa local e teve o Follow aceito.
+func (s *Service) allowedInteraction(ctx context.Context, personID, visibility, actorID string) (bool, error) {
+	if visibility != "followers" {
+		return true, nil
+	}
+	return s.store.IsRemoteFollower(ctx, personID, actorID)
 }
 
 // handleDelete remove uma resposta ou os dados de uma conta excluída.

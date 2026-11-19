@@ -168,9 +168,21 @@ vale também para `GET /media/{id}`, que verifica o vínculo antes de servir as
 imagens. Visitantes e pessoas que não seguem recebem `404` ao tentar abrir o
 ciclo ou o registro.
 
-A federação de conteúdo `followers` ainda não está implementada: apenas
-registros de ciclos públicos são distribuídos, e o acesso remoto a `/notas` e
-`/media` de conteúdo restrito será tratado em uma etapa própria.
+Registros de ciclos `followers` também são federados. A `Note` usa apenas a
+coleção de seguidores em `To`, sem incluir a coleção `Public`, e é entregue
+somente aos seguidores remotos aceitos. O acesso remoto usa URLs de capacidade:
+o identificador da `Note` e as URLs das imagens recebem um parâmetro `token`
+derivado por HMAC do `CULTIVAR_SECRET_KEY`. Quem recebeu a publicação consegue
+abrir `/notas/{id}` e `/media/{id}` mesmo sem sessão ou assinatura HTTP; quem não
+recebeu o link vê `404`. O mesmo token não é individual por seguidor, então quem
+guardou o link continua com acesso enquanto o registro estiver federado. Ao
+deixar de seguir, a pessoa deixa de receber novas publicações, mas mantém o que
+já tinha recebido.
+
+Quando a visibilidade efetiva muda entre `public` e `followers`, o objeto
+federado muda de identificador: a versão anterior recebe `Delete` e a nova é
+publicada como `Create`. Isso evita reutilizar um identificador já removido e
+mantém os destinatários corretos em cada versão.
 
 ## Diário de cultivo e práticas
 
@@ -232,12 +244,14 @@ protegidas pela mesma regra.
 
 Limitações atuais:
 
-- A federação de conteúdo `followers` ainda não está implementada: apenas
-  registros de ciclos públicos são distribuídos como `Note`, e o acesso remoto
-  a `/notas` e `/media` de conteúdo restrito precisa de uma decisão própria.
-- A federação publica registros de ciclos públicos como `Note`; práticas e
-  atualizações ou exclusões de publicações já entregues ainda não são
-  propagadas.
+- Práticas ainda não são federadas; apenas registros do diário geram `Note`.
+- O token de capacidade é derivado do identificador e do segredo da instância,
+  não de cada seguidor. Não há revogação individual: um link já entregue
+  continua válido enquanto o conteúdo permanecer federado.
+- Uma publicação removida com `Delete` não pode ser recriada com o mesmo
+  identificador: o Mastodon guarda o `Tombstone` e ignora um novo `Create` para
+  o mesmo objeto. A troca de visibilidade contorna isso usando um identificador
+  novo para a versão restrita.
 - Chaves privadas de Actor ficam no banco nesta etapa; proteção, rotação e
   recuperação de chaves serão tratadas antes da operação em produção.
 
@@ -284,7 +298,7 @@ O binário também expõe comandos operacionais:
 | --- | --- |
 | `cultivar migrate <up\|down\|status\|version>` | Executa migrações |
 | `cultivar admin <promote\|demote\|list>` | Administra papéis |
-| `cultivar federation refresh <registro>` | Reconstrói e redistribui um registro (ou o remove, se não for mais público) |
+| `cultivar federation refresh <registro>` | Reconstrói e redistribui um registro (ou o remove, se não for mais federado) |
 
 ## Configuração
 
@@ -376,29 +390,34 @@ entre o domínio e o ActivityStreams fica em `internal/federation`.
 
 Fluxo implementado:
 
-- **Publicação:** ao criar um registro em um ciclo público, o registro é
-  traduzido para uma `Note`, com as fotos como `Image` em `attachment`, e
-  distribuído em uma atividade `Create` para os seguidores aceitos. A `Note`
-  fica disponível em `GET /notas/{id}` e a atividade em `GET /activities/{id}`.
+- **Publicação:** ao criar um registro em um ciclo público ou `followers`, o
+  registro é traduzido para uma `Note`, com as fotos como `Image` em
+  `attachment`, e distribuído em uma atividade `Create` para os seguidores
+  aceitos. Conteúdo público inclui a coleção `Public` e os seguidores;
+  conteúdo `followers` usa apenas os seguidores e endereços com token de
+  capacidade. A `Note` fica disponível em `GET /notas/{id}` e a atividade em
+  `GET /activities/{id}`.
   O conteúdo funciona como uma ficha do registro: identifica o ciclo (nome,
   espécie e variedade), traz o contexto do cultivo (ambiente, local e início),
   a data e o estágio do registro, o relato, medidas, intervenções, ocorrências,
   a prática vinculada e o link para a página completa. As fotos vão como anexos.
-- **Atualização:** ao editar um registro público ou incluir/remover fotos, a
+- **Atualização:** ao editar um registro federado ou incluir/remover fotos, a
   `Note` é reconstruída e distribuída em uma atividade `Update`, com o mesmo
   identificador. A instância remota substitui o conteúdo e os anexos, exibindo a
   marca de edição. Registros ainda não publicados são enviados como `Create`.
-  Quando o registro deixa de ser público, uma atividade `Delete` com
-  `Tombstone` remove o status remoto. O comando
+  Quando o registro deixa de ser federado, uma atividade `Delete` com
+  `Tombstone` remove o status remoto. Se a visibilidade efetiva muda entre
+  público e seguidores, a versão anterior recebe `Delete` e a nova é publicada
+  como `Create`, com identificador próprio. O comando
   `cultivar federation refresh <registro>` refaz o envio adequado para corrigir
   dados, remover uma mídia com problema ou despublicar.
 - **Edição do ciclo:** como o cartão usa dados do ciclo, editar o ciclo também
-  reconcilia os registros. Se ele deixa de ser público, os registros que eram
-  públicos recebem `Delete`; se os campos do cartão mudam (nome, espécie,
-  variedade, ambiente, local ou início), os registros públicos recebem
-  `Update`. Ao tornar um ciclo público, os registros são publicados pela
-  primeira vez. Alterações em estágio, status, substrato e demais campos
-  internos não geram tráfego.
+  reconcilia os registros. Se ele deixa de ser federado, os registros que eram
+  federados recebem `Delete`; se os campos do cartão mudam (nome, espécie,
+  variedade, ambiente, local ou início), os registros federados recebem
+  `Update`. Ao tornar um ciclo público ou `followers`, os registros são
+  publicados pela primeira vez. Alterações em estágio, status, substrato e
+  demais campos internos não geram tráfego.
   Uma publicação removida com `Delete` não pode ser recriada com o mesmo
   identificador: o Mastodon guarda o `Tombstone` e ignora um novo `Create` para
   o mesmo objeto. Republicar um registro já removido exigiria um identificador
@@ -413,25 +432,29 @@ Fluxo implementado:
 - **Interações:** respostas (`Create` de uma `Note` com `inReplyTo`), curtidas
   (`Like`), impulsos (`Announce`), edições de resposta (`Update`) e remoções
   (`Delete`/`Undo`) são vinculados ao registro quando a Note citada pertence a
-  esta instância e o registro ainda é público. O texto das respostas é extraído
-  do HTML e guardado em texto simples, limitado a 4000 caracteres. Cada ator tem
-  no máximo uma curtida e um impulso por registro; novas atividades do mesmo tipo
-  atualizam a existente. As interações aparecem na página do ciclo, junto ao
-  registro, com contadores e respostas. `Delete` de uma conta remove também suas
-  interações.
+  esta instância e o registro ainda é federado. Em conteúdo `followers`, só são
+  aceitas interações de um Actor remoto confirmado como seguidor. O texto das
+  respostas é extraído do HTML e guardado em texto simples, limitado a 4000
+  caracteres. Cada ator tem no máximo uma curtida e um impulso por registro;
+  novas atividades do mesmo tipo atualizam a existente. As interações aparecem
+  na página do ciclo, junto ao registro, com contadores e respostas. `Delete` de
+  uma conta remove também suas interações.
 - **Respostas enviadas:** o dono do ciclo pode responder a uma mensagem recebida
   na própria página do registro. A resposta é uma `Note` em `/respostas/{id}`,
   com `inReplyTo` apontando para a mensagem original, menção ao autor e entrega
-  ao inbox de quem respondeu e aos seguidores. Ela é persistida em
-  `federation_replies` com `direction = 'outbound'` e aparece no mesmo fio,
-  identificada como resposta local. A Note só é servida enquanto o registro
-  continuar público.
+  ao inbox de quem respondeu e aos seguidores. Em registro `followers`, a
+  resposta também usa apenas a coleção de seguidores e a pessoa respondida, sem
+  a coleção `Public`. Ela é persistida em `federation_replies` com
+  `direction = 'outbound'` e aparece no mesmo fio, identificada como resposta
+  local. A Note só é servida enquanto o registro continuar federado.
 - **Outbox:** a coleção lista apenas atividades `Create` públicas. Atividades de
   controle, como `Accept`, não são publicações e não entram no `totalItems`, que
   outras instâncias usam como contagem de publicações.
 - **Novos seguidores:** o Mastodon não importa itens do outbox ao abrir um
   perfil; ele mostra apenas o que recebeu. Por isso, ao aceitar um `Follow`, as
-  publicações públicas mais recentes são reenfileiradas para o novo seguidor.
+  publicações públicas e `followers` mais recentes são reenfileiradas para o
+  novo seguidor. Objetos já removidos com `Delete` ficam de fora. Como o Follow
+  já foi aceito, o novo seguidor está autorizado a receber o conteúdo restrito.
 - **Chaves:** cada Actor recebe um par RSA 2048 em `actor_keys`; a chave pública
   é exposta em `publicKey` no documento do Actor.
 - **Segurança:** o cliente remoto bloqueia endereços privados, loopback e de

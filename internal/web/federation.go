@@ -16,7 +16,7 @@ import (
 
 // federationURLs reúne os endereços públicos usados nos documentos federados.
 func (s *server) federationURLs() federation.URLs {
-	return federation.NewURLs(s.cfg.BaseURL())
+	return federation.NewURLsWithSecret(s.cfg.BaseURL(), s.cfg.SecretKey)
 }
 
 // webfinger resolve acct:identificador@domínio para o Actor correspondente.
@@ -230,7 +230,10 @@ func (s *server) inbox(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-// note publica a representação ActivityPub de um registro público.
+// note publica a representação ActivityPub de um registro federado.
+//
+// Registros públicos são abertos. Registros restritos a seguidores exigem o
+// token de capacidade entregue junto com a Note.
 func (s *server) note(w http.ResponseWriter, r *http.Request) {
 	if s.cultivation == nil || s.identity == nil {
 		http.Error(w, "nota não encontrada", http.StatusNotFound)
@@ -248,8 +251,26 @@ func (s *server) note(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cycle, _, err := s.cultivation.FindCycle(r.Context(), "", entry.CycleID)
-	if err != nil || entry.EffectiveVisibility(cycle) != cultivation.VisibilityPublic {
+	// A consulta usa o autor como observador para que a visibilidade restrita a
+	// seguidores não impeça a montagem da Note. O acesso em si já é controlado
+	// pela visibilidade efetiva e pelo token de capacidade abaixo.
+	cycle, _, err := s.cultivation.FindCycle(r.Context(), entry.AuthorID, entry.CycleID)
+	if err != nil {
+		http.Error(w, "nota não encontrada", http.StatusNotFound)
+		return
+	}
+
+	visibility := entry.EffectiveVisibility(cycle)
+	switch visibility {
+	case cultivation.VisibilityPublic:
+		// Publicações públicas continuam abertas.
+	case cultivation.VisibilityFollowers:
+		// Publicações restritas exigem o token entregue junto com a Note.
+		if !s.federationURLs().ValidNoteToken(entry.ID, r.URL.Query().Get("token")) {
+			http.Error(w, "nota não encontrada", http.StatusNotFound)
+			return
+		}
+	default:
 		http.Error(w, "nota não encontrada", http.StatusNotFound)
 		return
 	}
@@ -277,7 +298,11 @@ func (s *server) note(w http.ResponseWriter, r *http.Request) {
 
 	note := federation.NewEntryNote(s.federationURLs(), *person, *cycle, *entry, assets)
 
-	w.Header().Set("Cache-Control", "public, max-age=60")
+	cache := "public, max-age=60"
+	if visibility == cultivation.VisibilityFollowers {
+		cache = "private, max-age=60"
+	}
+	w.Header().Set("Cache-Control", cache)
 	writeJSONType(w, http.StatusOK, federation.ActivityContentType, note)
 }
 

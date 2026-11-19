@@ -90,6 +90,7 @@ type MediaService interface {
 	ListByEntryIDs(ctx context.Context, entryIDs []string) (map[string][]media.Asset, error)
 	Open(ctx context.Context, id string) (*media.Asset, io.ReadCloser, error)
 	CanView(ctx context.Context, id, viewerID string) (bool, error)
+	CanViewFederated(ctx context.Context, id string) (bool, error)
 	Delete(ctx context.Context, ownerID, id string) error
 }
 

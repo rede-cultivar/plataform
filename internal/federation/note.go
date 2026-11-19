@@ -98,8 +98,24 @@ type Delete struct {
 	Object  Tombstone `json:"object"`
 }
 
-// NewEntryNote traduz um registro de cultivo público para uma Note.
+// NewEntryNote traduz um registro de cultivo para uma Note.
+//
+// A visibilidade efetiva define os destinatários e se os endereços carregam
+// tokens de capacidade. Registros privados não devem ser publicados, mas a
+// função continua montando uma Note segura caso seja usada para reconstruir uma
+// publicação anterior durante a remoção.
 func NewEntryNote(urls URLs, person identity.Person, cycle cultivation.Cycle, entry cultivation.Entry, assets []media.Asset) Note {
+	return newEntryNote(urls, person, cycle, entry, assets, entry.EffectiveVisibility(&cycle))
+}
+
+func newEntryNote(
+	urls URLs,
+	person identity.Person,
+	cycle cultivation.Cycle,
+	entry cultivation.Entry,
+	assets []media.Asset,
+	visibility cultivation.Visibility,
+) Note {
 	published := entry.CreatedAt
 	if published.IsZero() {
 		published = entry.OccurredAt
@@ -107,24 +123,27 @@ func NewEntryNote(urls URLs, person identity.Person, cycle cultivation.Cycle, en
 
 	note := Note{
 		Context:      []string{activityStreamsContext},
-		ID:           urls.Note(entry.ID),
+		ID:           entryNoteID(urls, entry.ID, visibility),
 		Type:         "Note",
 		AttributedTo: urls.Actor(person.ID),
 		Content:      entryContent(urls, cycle, entry),
 		Published:    published.UTC().Format(time.RFC3339),
 		URL:          urls.Entry(cycle.ID, entry.ID),
-		To:           []string{PublicCollection},
-		CC:           []string{urls.Followers(person.ID)},
 	}
+	applyAudience(&note, urls, person, visibility, nil)
 
 	for _, asset := range assets {
 		if asset.ID == "" || asset.ContentType == "" {
 			continue
 		}
+		mediaURL := urls.Media(asset.ID)
+		if visibility == cultivation.VisibilityFollowers {
+			mediaURL = urls.MediaWithToken(asset.ID)
+		}
 		attachment := Attachment{
 			Type:      "Image",
 			MediaType: asset.ContentType,
-			URL:       urls.Media(asset.ID),
+			URL:       mediaURL,
 			Width:     asset.Width,
 			Height:    asset.Height,
 		}
@@ -135,6 +154,35 @@ func NewEntryNote(urls URLs, person identity.Person, cycle cultivation.Cycle, en
 	}
 
 	return note
+}
+
+// entryNoteID escolhe o identificador do objeto conforme a visibilidade.
+//
+// Publicações restritas a seguidores recebem um token de capacidade no próprio
+// identificador, para que a instância remota consiga buscá-las mesmo sem uma
+// assinatura HTTP.
+func entryNoteID(urls URLs, entryID string, visibility cultivation.Visibility) string {
+	if visibility == cultivation.VisibilityFollowers {
+		return urls.NoteWithToken(entryID)
+	}
+	return urls.Note(entryID)
+}
+
+// applyAudience define To/CC conforme a visibilidade efetiva.
+//
+// Conteúdo restrito a seguidores usa apenas a coleção de seguidores em To, sem
+// incluir a coleção Public. Conteúdo privado nunca é entregue, mas recebe o
+// público mais restrito para evitar exposição acidental.
+func applyAudience(note *Note, urls URLs, person identity.Person, visibility cultivation.Visibility, extraCC []string) {
+	switch visibility {
+	case cultivation.VisibilityFollowers, cultivation.VisibilityPrivate:
+		note.To = []string{urls.Followers(person.ID)}
+		note.CC = nil
+	default:
+		note.To = []string{PublicCollection}
+		note.CC = []string{urls.Followers(person.ID)}
+	}
+	note.CC = append(note.CC, extraCC...)
 }
 
 // ReplyTarget descreve a mensagem remota que será respondida.
@@ -148,8 +196,10 @@ type ReplyTarget struct {
 // NewReplyNote monta a Note de uma resposta publicada a partir do Cultivar.
 //
 // A resposta cita o autor da mensagem original, aponta inReplyTo para a Note
-// remota e é endereçada ao público, aos seguidores e à pessoa respondida. O
-// campo url leva à página do registro, onde a conversa aparece reunida.
+// remota e é endereçada conforme a visibilidade do registro. Em conteúdo
+// público, vai para o público, os seguidores e a pessoa respondida; em conteúdo
+// restrito, vai apenas para os seguidores e a pessoa respondida. O campo url
+// leva à página do registro, onde a conversa aparece reunida.
 func NewReplyNote(
 	urls URLs,
 	person identity.Person,
@@ -157,6 +207,7 @@ func NewReplyNote(
 	replyID string,
 	target ReplyTarget,
 	content string,
+	visibility cultivation.Visibility,
 	published time.Time,
 ) Note {
 	name := mentionName(target.ActorID, target.ActorHandle)
@@ -170,12 +221,14 @@ func NewReplyNote(
 		Published:    published.UTC().Format(time.RFC3339),
 		InReplyTo:    target.ObjectID,
 		URL:          urls.Entry(entry.CycleID, entry.ID),
-		To:           []string{PublicCollection},
-		CC:           []string{urls.Followers(person.ID)},
 	}
+
+	extraCC := make([]string, 0, 1)
 	if target.ActorID != "" {
-		note.CC = append(note.CC, target.ActorID)
+		extraCC = append(extraCC, target.ActorID)
 	}
+	applyAudience(&note, urls, person, visibility, extraCC)
+
 	if name != "" && target.ActorID != "" {
 		note.Tag = []Tag{{Type: "Mention", Href: target.ActorID, Name: name}}
 	}

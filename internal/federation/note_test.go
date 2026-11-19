@@ -347,7 +347,7 @@ func TestNewReplyNote(t *testing.T) {
 	}
 	published := time.Date(2026, 11, 18, 10, 30, 0, 0, time.UTC)
 
-	note := NewReplyNote(urls, testPerson(), testEntry(), "reply-1", target, "Obrigada!\nAbraço", published)
+	note := NewReplyNote(urls, testPerson(), testEntry(), "reply-1", target, "Obrigada!\nAbraço", cultivation.VisibilityPublic, published)
 
 	if note.ID != "https://cultivar.example/respostas/reply-1" {
 		t.Errorf("ID = %q", note.ID)
@@ -392,13 +392,88 @@ func TestNewReplyNoteEscapesContent(t *testing.T) {
 		ObjectID:    "https://remote.example/notes/1",
 	}
 
-	note := NewReplyNote(urls, testPerson(), testEntry(), "reply-1", target, `<script>alert("x")</script>`, time.Now())
+	note := NewReplyNote(urls, testPerson(), testEntry(), "reply-1", target, `<script>alert("x")</script>`, cultivation.VisibilityPublic, time.Now())
 
 	if strings.Contains(note.Content, "<script>") {
 		t.Errorf("Content = %q, want escaped HTML", note.Content)
 	}
 	if !strings.Contains(note.Content, "&lt;script&gt;") {
 		t.Errorf("Content = %q, want escaped script tag", note.Content)
+	}
+}
+
+func TestNewEntryNoteFollowersAudience(t *testing.T) {
+	urls := NewURLsWithSecret("https://cultivar.example", "segredo-de-teste")
+	cycle := testCycle()
+	cycle.Visibility = cultivation.VisibilityFollowers
+	assets := []media.Asset{{
+		ID:          "asset-1",
+		ContentType: "image/png",
+	}}
+
+	note := NewEntryNote(urls, testPerson(), cycle, testEntry(), assets)
+
+	if len(note.To) != 1 || note.To[0] != urls.Followers(testPerson().ID) {
+		t.Errorf("To = %v, want only the followers collection", note.To)
+	}
+	if len(note.CC) != 0 {
+		t.Errorf("CC = %v, want empty for followers-only content", note.CC)
+	}
+	for _, audience := range append(append([]string{}, note.To...), note.CC...) {
+		if audience == PublicCollection {
+			t.Errorf("audience = %v, want no public collection", audience)
+		}
+	}
+
+	if !strings.Contains(note.ID, "?token=") {
+		t.Errorf("ID = %q, want capability token", note.ID)
+	}
+	if len(note.Attachment) != 1 || !strings.Contains(note.Attachment[0].URL, "?token=") {
+		t.Errorf("Attachment = %+v, want media capability token", note.Attachment)
+	}
+}
+
+func TestNewEntryNotePrivateAudience(t *testing.T) {
+	urls := NewURLs("https://cultivar.example")
+	cycle := testCycle()
+	cycle.Visibility = cultivation.VisibilityPrivate
+
+	note := NewEntryNote(urls, testPerson(), cycle, testEntry(), nil)
+
+	if len(note.To) != 1 || note.To[0] != urls.Followers(testPerson().ID) {
+		t.Errorf("To = %v, want restricted audience", note.To)
+	}
+	if len(note.CC) != 0 {
+		t.Errorf("CC = %v, want empty", note.CC)
+	}
+	if strings.Contains(note.ID, "?token=") {
+		t.Errorf("ID = %q, want no token for private content", note.ID)
+	}
+}
+
+func TestNewReplyNoteFollowersAudience(t *testing.T) {
+	urls := NewURLs("https://cultivar.example")
+	target := ReplyTarget{
+		ActorID:     "https://remote.example/users/bob",
+		ActorHandle: "bob",
+		ObjectID:    "https://remote.example/notes/1",
+	}
+	cycle := testCycle()
+	cycle.Visibility = cultivation.VisibilityFollowers
+	entry := testEntry()
+
+	note := NewReplyNote(urls, testPerson(), entry, "reply-1", target, "Obrigada!", cultivation.VisibilityFollowers, time.Now())
+
+	if len(note.To) != 1 || note.To[0] != urls.Followers(testPerson().ID) {
+		t.Errorf("To = %v, want only followers", note.To)
+	}
+	if len(note.CC) != 1 || note.CC[0] != target.ActorID {
+		t.Errorf("CC = %v, want only the replied actor", note.CC)
+	}
+	for _, audience := range append(append([]string{}, note.To...), note.CC...) {
+		if audience == PublicCollection {
+			t.Errorf("audience = %v, want no public collection", audience)
+		}
 	}
 }
 

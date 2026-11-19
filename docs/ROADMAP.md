@@ -92,8 +92,8 @@ Contas locais com e-mail e senha, sessões no servidor, proteção CSRF, perfis 
 - Gerenciamento de interesses.
 - Consulta de perfis.
 - Relacionamento entre participantes.
-- Seguir e deixar de seguir pessoas. *(Vínculo local e leitura de conteúdo
-  `followers` implementados; federação desse conteúdo pendente.)*
+- Seguir e deixar de seguir pessoas. *(Vínculo local, leitura e federação de
+  conteúdo `followers` implementados.)*
 
 #### Publicações e interações
 

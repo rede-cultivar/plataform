@@ -99,6 +99,13 @@ func (s *Service) CanView(ctx context.Context, id, viewerID string) (bool, error
 	return s.store.CanView(ctx, id, viewerID)
 }
 
+// CanViewFederated informa se a mídia pertence a conteúdo federado.
+//
+// É usado para validar URLs de capacidade de conteúdo restrito a seguidores.
+func (s *Service) CanViewFederated(ctx context.Context, id string) (bool, error) {
+	return s.store.CanViewFederated(ctx, id)
+}
+
 // Delete remove uma mídia da pessoa responsável.
 func (s *Service) Delete(ctx context.Context, ownerID, id string) error {
 	key, err := s.store.Delete(ctx, id, ownerID)

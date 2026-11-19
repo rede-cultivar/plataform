@@ -91,9 +91,10 @@ func (s *Service) ActorKey(ctx context.Context, personID string) (*KeyPair, erro
 	return &KeyPair{PublicPEM: record.PublicPEM, PrivatePEM: record.PrivatePEM}, nil
 }
 
-// PublishEntry publica um registro público como Note e distribui a atividade.
+// PublishEntry publica um registro como Note e distribui a atividade.
 //
-// Registros privados ou visíveis apenas para seguidores não são publicados.
+// Registros privados não são publicados. Registros visíveis apenas para
+// seguidores são entregues sem incluir a coleção Public.
 func (s *Service) PublishEntry(
 	ctx context.Context,
 	person identity.Person,
@@ -101,7 +102,8 @@ func (s *Service) PublishEntry(
 	entry cultivation.Entry,
 	assets []media.Asset,
 ) error {
-	if entry.EffectiveVisibility(&cycle) != cultivation.VisibilityPublic {
+	visibility, ok := activityVisibility(entry.EffectiveVisibility(&cycle))
+	if !ok {
 		return nil
 	}
 
@@ -110,14 +112,16 @@ func (s *Service) PublishEntry(
 	}
 
 	note := NewEntryNote(s.urls, person, cycle, entry, assets)
-	return s.publishCreate(ctx, person, note)
+	return s.publishCreate(ctx, person, note, s.urls.Note(entry.ID), visibility)
 }
 
 // PublishEntryUpdate redistribui uma publicação já federada após uma alteração.
 //
 // O Mastodon só atualiza publicações que já recebeu, por isso a Note precisa ter
 // sido distribuída antes. Quando não há publicação anterior, o registro é
-// publicado como Create.
+// publicado como Create. Quando a visibilidade muda entre público e seguidores,
+// o identificador do objeto muda: a versão anterior recebe Delete e a nova é
+// publicada como Create.
 func (s *Service) PublishEntryUpdate(
 	ctx context.Context,
 	person identity.Person,
@@ -125,7 +129,8 @@ func (s *Service) PublishEntryUpdate(
 	entry cultivation.Entry,
 	assets []media.Asset,
 ) error {
-	if entry.EffectiveVisibility(&cycle) != cultivation.VisibilityPublic {
+	visibility, ok := activityVisibility(entry.EffectiveVisibility(&cycle))
+	if !ok {
 		return nil
 	}
 
@@ -134,13 +139,20 @@ func (s *Service) PublishEntryUpdate(
 	}
 
 	note := NewEntryNote(s.urls, person, cycle, entry, assets)
+	objectID := s.urls.Note(entry.ID)
 
-	latest, err := s.store.LatestObjectActivityType(ctx, person.ID, note.ID)
+	latest, err := s.store.LatestObjectActivity(ctx, person.ID, objectID)
 	if err != nil {
 		return err
 	}
-	if latest == "" || latest == "Delete" {
-		return s.publishCreate(ctx, person, note)
+	if latest.Type == "" || latest.Type == "Delete" {
+		return s.publishCreate(ctx, person, note, objectID, visibility)
+	}
+	if latest.Visibility != visibility {
+		if err := s.publishEntryDelete(ctx, person, cycle, entry); err != nil {
+			return err
+		}
+		return s.publishCreate(ctx, person, note, objectID, visibility)
 	}
 
 	note.Updated = s.now().UTC().Format(time.RFC3339)
@@ -157,7 +169,7 @@ func (s *Service) PublishEntryUpdate(
 	}
 
 	activityDBID, inserted, err := s.store.InsertActivity(
-		ctx, person.ID, update.ID, "Update", note.ID, payload, "public", "outbound",
+		ctx, person.ID, update.ID, "Update", objectID, payload, visibility, "outbound",
 	)
 	if err != nil {
 		return err
@@ -170,11 +182,21 @@ func (s *Service) PublishEntryUpdate(
 }
 
 // PublishEntryDelete remove do Fediverso uma publicação que deixou de ser
-// pública.
+// federada.
 //
 // A atividade só é enviada quando existe uma publicação anterior. Registros
-// nunca publicados não geram tráfego.
+// nunca publicados não geram tráfego. O Tombstone reaproveita o identificador da
+// última versão publicada, inclusive quando ela tinha token de capacidade.
 func (s *Service) PublishEntryDelete(
+	ctx context.Context,
+	person identity.Person,
+	cycle cultivation.Cycle,
+	entry cultivation.Entry,
+) error {
+	return s.publishEntryDelete(ctx, person, cycle, entry)
+}
+
+func (s *Service) publishEntryDelete(
 	ctx context.Context,
 	person identity.Person,
 	cycle cultivation.Cycle,
@@ -184,15 +206,18 @@ func (s *Service) PublishEntryDelete(
 		return err
 	}
 
-	note := NewEntryNote(s.urls, person, cycle, entry, nil)
+	objectID := s.urls.Note(entry.ID)
 
-	latest, err := s.store.LatestObjectActivityType(ctx, person.ID, note.ID)
+	latest, err := s.store.LatestObjectActivity(ctx, person.ID, objectID)
 	if err != nil {
 		return err
 	}
-	if latest != "Create" && latest != "Update" {
+	if latest.Type != "Create" && latest.Type != "Update" {
 		return nil
 	}
+
+	previous := visibilityValue(latest.Visibility)
+	note := newEntryNote(s.urls, person, cycle, entry, nil, previous)
 
 	id, err := newActivityID()
 	if err != nil {
@@ -206,7 +231,7 @@ func (s *Service) PublishEntryDelete(
 	}
 
 	activityDBID, inserted, err := s.store.InsertActivity(
-		ctx, person.ID, deletion.ID, "Delete", note.ID, payload, "public", "outbound",
+		ctx, person.ID, deletion.ID, "Delete", objectID, payload, latest.Visibility, "outbound",
 	)
 	if err != nil {
 		return err
@@ -219,7 +244,10 @@ func (s *Service) PublishEntryDelete(
 }
 
 // publishCreate grava e distribui uma nova atividade Create.
-func (s *Service) publishCreate(ctx context.Context, person identity.Person, note Note) error {
+//
+// O identificador do objeto é gravado sem o token de capacidade, para que
+// consultas posteriores encontrem a publicação em qualquer visibilidade.
+func (s *Service) publishCreate(ctx context.Context, person identity.Person, note Note, objectID, visibility string) error {
 	id, err := newActivityID()
 	if err != nil {
 		return err
@@ -232,7 +260,7 @@ func (s *Service) publishCreate(ctx context.Context, person identity.Person, not
 	}
 
 	activityDBID, inserted, err := s.store.InsertActivity(
-		ctx, person.ID, create.ID, "Create", note.ID, payload, "public", "outbound",
+		ctx, person.ID, create.ID, "Create", objectID, payload, visibility, "outbound",
 	)
 	if err != nil {
 		return err
@@ -242,6 +270,31 @@ func (s *Service) publishCreate(ctx context.Context, person identity.Person, not
 	}
 
 	return s.enqueueFollowers(ctx, person.ID, activityDBID)
+}
+
+// activityVisibility converte a visibilidade do diário para o valor guardado na
+// federação. Visibilidade privada não gera atividade.
+func activityVisibility(visibility cultivation.Visibility) (string, bool) {
+	switch visibility {
+	case cultivation.VisibilityPublic:
+		return "public", true
+	case cultivation.VisibilityFollowers:
+		return "followers", true
+	default:
+		return "", false
+	}
+}
+
+// visibilityValue interpreta a visibilidade guardada na federação.
+func visibilityValue(value string) cultivation.Visibility {
+	switch value {
+	case "public":
+		return cultivation.VisibilityPublic
+	case "followers":
+		return cultivation.VisibilityFollowers
+	default:
+		return cultivation.VisibilityPrivate
+	}
 }
 
 // ReplyToInteraction publica uma resposta a uma mensagem recebida.
@@ -261,7 +314,9 @@ func (s *Service) ReplyToInteraction(
 	if content == "" || utf8.RuneCountInString(content) > MaxReplyContent {
 		return nil, ErrInvalidReply
 	}
-	if entry.AuthorID != person.ID || entry.EffectiveVisibility(&cycle) != cultivation.VisibilityPublic {
+	effective := entry.EffectiveVisibility(&cycle)
+	visibility, federated := activityVisibility(effective)
+	if entry.AuthorID != person.ID || !federated {
 		return nil, ErrNotFound
 	}
 	if _, err := s.ActorKey(ctx, person.ID); err != nil {
@@ -289,7 +344,7 @@ func (s *Service) ReplyToInteraction(
 		ActorURL:    parent.ActorURL,
 		ObjectID:    parent.ObjectID,
 	}
-	note := NewReplyNote(s.urls, person, entry, noteID, target, content, published)
+	note := NewReplyNote(s.urls, person, entry, noteID, target, content, effective, published)
 	create := NewCreate(s.urls, person, note, activityID)
 
 	payload, err := json.Marshal(create)
@@ -298,7 +353,7 @@ func (s *Service) ReplyToInteraction(
 	}
 
 	activityDBID, inserted, err := s.store.InsertActivity(
-		ctx, person.ID, create.ID, "Create", note.ID, payload, "public", "outbound",
+		ctx, person.ID, create.ID, "Create", note.ID, payload, visibility, "outbound",
 	)
 	if err != nil {
 		return nil, err
@@ -344,9 +399,9 @@ func (s *Service) ReplyToInteraction(
 	return &local, nil
 }
 
-// FindReplyNote devolve a Note pública de uma resposta publicada pelo Cultivar.
+// FindReplyNote devolve a Note de uma resposta publicada pelo Cultivar.
 func (s *Service) FindReplyNote(ctx context.Context, replyID string) (Note, error) {
-	payload, err := s.store.FindPublicReplyObject(ctx, s.urls.ReplyNote(replyID))
+	payload, err := s.store.FindFederatedReplyObject(ctx, s.urls.ReplyNote(replyID))
 	if err != nil {
 		return Note{}, err
 	}
@@ -439,7 +494,9 @@ func (s *Service) FindActivity(ctx context.Context, activityID string) (json.Raw
 	if err != nil {
 		return nil, err
 	}
-	if activity.Visibility != "public" {
+	// Atividades públicas e restritas a seguidores usam identificadores opacos.
+	// Quem recebeu a atividade pode buscá-la; o restante continua sem acesso.
+	if activity.Visibility != "public" && activity.Visibility != "followers" {
 		return nil, ErrNotFound
 	}
 	return activity.Payload, nil
@@ -625,13 +682,14 @@ func (s *Service) sendAccept(ctx context.Context, personID string, remote *Remot
 	return s.store.EnqueueDelivery(ctx, activityDBID, remote.InboxURL())
 }
 
-// backfillFollow envia as publicações públicas recentes ao novo seguidor.
+// backfillFollow envia as publicações recentes ao novo seguidor.
 //
 // O Mastodon não importa itens do outbox ao abrir um perfil: ele mostra apenas
 // as atividades que recebeu. Sem esse envio, quem segue depois da publicação
-// não vê os registros anteriores.
+// não vê os registros anteriores. O backfill inclui conteúdo restrito a
+// seguidores porque o Follow já foi aceito e o novo seguidor está autorizado.
 func (s *Service) backfillFollow(ctx context.Context, personID string, remote *RemoteActor) {
-	activities, err := s.store.ListOutbox(ctx, personID, backfillLimit)
+	activities, err := s.store.ListBackfill(ctx, personID, backfillLimit)
 	if err != nil {
 		s.logger.Warn("list federation backfill", "person", personID, "error", err)
 		return

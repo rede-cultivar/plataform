@@ -67,7 +67,8 @@ func mediaMessage(err error) (string, bool) {
 // mediaAsset serve o conteúdo de uma imagem autorizada.
 //
 // A verificação de visibilidade acontece no serviço de mídia, que considera a
-// pessoa responsável e os vínculos com registros e práticas públicas.
+// pessoa responsável e os vínculos com registros e práticas. Imagens de conteúdo
+// restrito a seguidores também aceitam o token de capacidade entregue na Note.
 func (s *server) mediaAsset(w http.ResponseWriter, r *http.Request) {
 	if s.media == nil {
 		http.Error(w, "imagem não encontrada", http.StatusNotFound)
@@ -80,6 +81,7 @@ func (s *server) mediaAsset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := chi.URLParam(r, "id")
+	urls := s.federationURLs()
 
 	allowed, err := s.media.CanView(r.Context(), id, viewerID)
 	if err != nil {
@@ -87,6 +89,19 @@ func (s *server) mediaAsset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	// Imagens de conteúdo restrito a seguidores usam URL de capacidade. O token
+	// libera o acesso anônimo de quem recebeu a publicação, mas a mídia ainda
+	// precisa pertencer a conteúdo federado.
+	if !allowed && urls.ValidMediaToken(id, r.URL.Query().Get("token")) {
+		allowed, err = s.media.CanViewFederated(r.Context(), id)
+		if err != nil {
+			s.logger.Error("check federated media visibility", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+
 	if !allowed {
 		http.Error(w, "imagem não encontrada", http.StatusNotFound)
 		return

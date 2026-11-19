@@ -20,6 +20,58 @@ func testPerson() identity.Person {
 	}
 }
 
+func TestCapabilityTokens(t *testing.T) {
+	urls := NewURLsWithSecret("https://cultivar.example", "segredo-de-teste")
+
+	noteToken := urls.NoteToken("entry-1")
+	if noteToken == "" {
+		t.Fatal("NoteToken() = empty")
+	}
+	if !urls.ValidNoteToken("entry-1", noteToken) {
+		t.Error("ValidNoteToken() rejected its own token")
+	}
+	if urls.ValidNoteToken("entry-2", noteToken) {
+		t.Error("ValidNoteToken() accepted a token from another entry")
+	}
+	if urls.ValidNoteToken("entry-1", "") {
+		t.Error("ValidNoteToken() accepted an empty token")
+	}
+	if urls.ValidNoteToken("entry-1", noteToken+"0") {
+		t.Error("ValidNoteToken() accepted a modified token")
+	}
+
+	mediaToken := urls.MediaToken("asset-1")
+	if !urls.ValidMediaToken("asset-1", mediaToken) {
+		t.Error("ValidMediaToken() rejected its own token")
+	}
+	if mediaToken == noteToken {
+		t.Error("note and media tokens for the same id should differ")
+	}
+
+	other := NewURLsWithSecret("https://cultivar.example", "outro-segredo")
+	if other.ValidNoteToken("entry-1", noteToken) {
+		t.Error("ValidNoteToken() accepted a token from another secret")
+	}
+
+	if got := urls.NoteWithToken("entry-1"); !strings.Contains(got, "?token="+noteToken) {
+		t.Errorf("NoteWithToken() = %q, want token %q", got, noteToken)
+	}
+	if got := urls.MediaWithToken("asset-1"); !strings.Contains(got, "?token="+mediaToken) {
+		t.Errorf("MediaWithToken() = %q, want token %q", got, mediaToken)
+	}
+
+	withoutSecret := NewURLs("https://cultivar.example")
+	if got := withoutSecret.NoteToken("entry-1"); got != "" {
+		t.Errorf("NoteToken() without secret = %q, want empty", got)
+	}
+	if withoutSecret.ValidNoteToken("entry-1", noteToken) {
+		t.Error("ValidNoteToken() accepted a token without a secret")
+	}
+	if got := withoutSecret.NoteWithToken("entry-1"); got != withoutSecret.Note("entry-1") {
+		t.Errorf("NoteWithToken() without secret = %q, want plain note URL", got)
+	}
+}
+
 func TestURLs(t *testing.T) {
 	urls := NewURLs("http://localhost:8080/")
 
