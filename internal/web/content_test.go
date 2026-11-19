@@ -22,6 +22,7 @@ import (
 type fakeCultivation struct {
 	cycles    map[string]*cultivation.Cycle
 	entries   map[string][]cultivation.Entry
+	follows   map[string]bool
 	createErr error
 	updateErr error
 	entryErr  error
@@ -32,7 +33,13 @@ func newFakeCultivation() *fakeCultivation {
 	return &fakeCultivation{
 		cycles:  make(map[string]*cultivation.Cycle),
 		entries: make(map[string][]cultivation.Entry),
+		follows: make(map[string]bool),
 	}
+}
+
+// setFollowing registra no fake que followerID segue followedID.
+func (f *fakeCultivation) setFollowing(followerID, followedID string) {
+	f.follows[followerID+"->"+followedID] = true
 }
 
 func (f *fakeCultivation) CreateCycle(_ context.Context, personID string, input cultivation.CycleInput) (*cultivation.Cycle, error) {
@@ -101,13 +108,18 @@ func (f *fakeCultivation) FindCycle(_ context.Context, viewerID, cycleID string)
 	if !ok {
 		return nil, nil, cultivation.ErrNotFound
 	}
-	if !cycle.CanView(viewerID) {
+
+	viewer := cultivation.Viewer{
+		PersonID:  viewerID,
+		Following: f.follows[viewerID+"->"+cycle.PersonID],
+	}
+	if !cycle.CanView(viewer) {
 		return nil, nil, cultivation.ErrNotFound
 	}
 
 	visible := make([]cultivation.Entry, 0, len(f.entries[cycleID]))
 	for _, entry := range f.entries[cycleID] {
-		if entry.CanView(viewerID, cycle) {
+		if entry.CanView(viewer, cycle) {
 			visible = append(visible, entry)
 		}
 	}
@@ -132,6 +144,28 @@ func (f *fakeCultivation) ListPersonCycles(_ context.Context, personID string) (
 		if cycle.PersonID == personID {
 			result = append(result, *cycle)
 		}
+	}
+	return result, nil
+}
+
+func (f *fakeCultivation) ListVisibleCycles(_ context.Context, viewerID, personID string) ([]cultivation.Cycle, error) {
+	viewer := cultivation.Viewer{
+		PersonID:  viewerID,
+		Following: f.follows[viewerID+"->"+personID],
+	}
+
+	result := make([]cultivation.Cycle, 0)
+	for _, cycle := range f.cycles {
+		if cycle.PersonID != personID {
+			continue
+		}
+		if !cycle.CanView(viewer) {
+			continue
+		}
+		if viewerID != personID && cycle.Status == cultivation.StatusArchived {
+			continue
+		}
+		result = append(result, *cycle)
 	}
 	return result, nil
 }

@@ -68,7 +68,12 @@ func (s *Service) FindCycle(ctx context.Context, viewerID, cycleID string) (*Cyc
 	if err != nil {
 		return nil, nil, err
 	}
-	if !cycle.CanView(viewerID) {
+
+	viewer, err := s.viewerFor(ctx, viewerID, cycle.PersonID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !cycle.CanView(viewer) {
 		return nil, nil, ErrNotFound
 	}
 
@@ -79,12 +84,27 @@ func (s *Service) FindCycle(ctx context.Context, viewerID, cycleID string) (*Cyc
 
 	visible := make([]Entry, 0, len(entries))
 	for _, entry := range entries {
-		if entry.CanView(viewerID, cycle) {
+		if entry.CanView(viewer, cycle) {
 			visible = append(visible, entry)
 		}
 	}
 
 	return cycle, visible, nil
+}
+
+// viewerFor descreve quem consulta o conteúdo de uma pessoa.
+func (s *Service) viewerFor(ctx context.Context, viewerID, ownerID string) (Viewer, error) {
+	viewer := Viewer{PersonID: viewerID}
+	if viewerID == "" || viewerID == ownerID {
+		return viewer, nil
+	}
+
+	following, err := s.store.IsFollowing(ctx, viewerID, ownerID)
+	if err != nil {
+		return Viewer{}, err
+	}
+	viewer.Following = following
+	return viewer, nil
 }
 
 // FindEntry busca um registro pelo identificador, sem verificar visibilidade.
@@ -95,9 +115,17 @@ func (s *Service) FindEntry(ctx context.Context, entryID string) (*Entry, error)
 	return s.store.FindEntry(ctx, entryID)
 }
 
-// ListPersonCycles lista os ciclos de uma pessoa.
+// ListPersonCycles lista os ciclos de uma pessoa, incluindo privados.
+//
+// Deve ser usado apenas pela própria pessoa ou por fluxos internos. Para
+// exibir o perfil de alguém, use ListVisibleCycles.
 func (s *Service) ListPersonCycles(ctx context.Context, personID string) ([]Cycle, error) {
 	return s.store.ListPersonCycles(ctx, personID)
+}
+
+// ListVisibleCycles lista os ciclos de uma pessoa visíveis para quem consulta.
+func (s *Service) ListVisibleCycles(ctx context.Context, viewerID, personID string) ([]Cycle, error) {
+	return s.store.ListVisibleCycles(ctx, viewerID, personID)
 }
 
 // ListPublicCycles lista ciclos públicos para descoberta.

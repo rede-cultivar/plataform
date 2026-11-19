@@ -60,6 +60,30 @@ func (v Visibility) Label() string {
 	}
 }
 
+// Viewer identifica quem consulta um ciclo ou registro.
+//
+// Following indica que a pessoa consultada segue a pessoa responsável pelo
+// conteúdo, o que libera a visibilidade "followers".
+type Viewer struct {
+	PersonID  string
+	Following bool
+}
+
+// CanView informa se a visibilidade é acessível a quem consulta.
+//
+// A responsabilidade de tratar o conteúdo como privado para terceiros fica
+// com Cycle.CanView e Entry.CanView, que conhecem a pessoa responsável.
+func (v Viewer) CanView(visibility Visibility) bool {
+	switch visibility {
+	case VisibilityPublic:
+		return true
+	case VisibilityFollowers:
+		return v.Following
+	default:
+		return false
+	}
+}
+
 // Stage representa o estágio observado de um cultivo.
 type Stage string
 
@@ -248,13 +272,14 @@ type Cycle struct {
 
 // CanView informa se uma pessoa pode visualizar o ciclo.
 //
-// A visibilidade para seguidores ainda não está implementada; por segurança,
-// apenas a pessoa responsável e o público geral têm acesso.
-func (c *Cycle) CanView(viewerID string) bool {
-	if c.Visibility == VisibilityPublic {
+// A pessoa responsável sempre vê o ciclo. As demais dependem da visibilidade:
+// público para qualquer pessoa e "followers" apenas para quem segue a pessoa
+// responsável.
+func (c *Cycle) CanView(viewer Viewer) bool {
+	if c.IsOwner(viewer.PersonID) {
 		return true
 	}
-	return viewerID != "" && viewerID == c.PersonID
+	return viewer.CanView(c.Visibility)
 }
 
 // IsOwner informa se a pessoa é responsável pelo ciclo.
@@ -311,12 +336,11 @@ func (e Entry) EffectiveVisibility(cycle *Cycle) Visibility {
 }
 
 // CanView informa se uma pessoa pode visualizar o registro.
-func (e Entry) CanView(viewerID string, cycle *Cycle) bool {
-	visibility := e.EffectiveVisibility(cycle)
-	if visibility == VisibilityPublic {
+func (e Entry) CanView(viewer Viewer, cycle *Cycle) bool {
+	if cycle.IsOwner(viewer.PersonID) {
 		return true
 	}
-	return viewerID != "" && viewerID == cycle.PersonID
+	return viewer.CanView(e.EffectiveVisibility(cycle))
 }
 
 // EffectiveVisibilityLabel retorna o rótulo da visibilidade efetiva.

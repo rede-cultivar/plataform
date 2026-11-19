@@ -138,6 +138,18 @@ footer {
   margin-block: 1.5rem;
 }
 
+.follow-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-block: 1rem;
+}
+
+.follow-stats a {
+  color: var(--accent);
+}
+
 .button,
 button {
   display: inline-block;

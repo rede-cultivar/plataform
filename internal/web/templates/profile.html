@@ -11,13 +11,89 @@
 
   <p class="muted">Participa desde {{.Person.CreatedAt.Format "02/01/2006"}}.</p>
 
+  <p class="follow-stats">
+    <a href="#seguidores">{{.FollowStats.Followers}} seguidor{{if ne .FollowStats.Followers 1}}es{{end}}</a>
+    <span aria-hidden="true">·</span>
+    <a href="#seguindo">{{.FollowStats.Following}} seguindo</a>
+  </p>
+
   {{if .Account}}
     {{if eq .Account.Person.ID .Person.ID}}
       <p class="actions">
         <a class="button" href="/conta/perfil">Editar perfil</a>
         <a class="button button-secondary" href="/conta">Minha conta</a>
       </p>
+    {{else}}
+      <form method="post" action="/perfil/{{.Person.Handle}}/{{if .Following}}deixar{{else}}seguir{{end}}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <button type="submit" class="button{{if .Following}} button-secondary{{end}}">
+          {{if .Following}}Deixar de seguir{{else}}Seguir{{end}}
+        </button>
+      </form>
     {{end}}
+  {{end}}
+</section>
+
+<section class="panel">
+  <h2>Ciclos de cultivo</h2>
+
+  {{if .Cycles}}
+    <ul class="cards">
+      {{range .Cycles}}
+        <li class="card">
+          <h2><a href="/diario/{{.ID}}">{{.Name}}</a></h2>
+          <p class="muted">
+            {{.Species}}{{if .Variety}} · {{.Variety}}{{end}} ·
+            {{.Environment.Label}} · {{.Stage.Label}}
+          </p>
+          <p class="muted">
+            {{.Status.Label}} · {{.Visibility.Label}} ·
+            início em {{.StartedOn.Format "02/01/2006"}} ·
+            {{.EntryCount}} registro{{if ne .EntryCount 1}}s{{end}}
+          </p>
+        </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p class="muted">Nenhum ciclo visível para você.</p>
+  {{end}}
+</section>
+
+<section class="panel" id="seguidores">
+  <h2>Seguidores</h2>
+
+  {{if .ProfileFollowers}}
+    <ul class="followers">
+      {{range .ProfileFollowers}}
+        <li class="follower">
+          <div>
+            <a href="/perfil/{{.Handle}}">{{if .DisplayName}}{{.DisplayName}}{{else}}@{{.Handle}}{{end}}</a>
+            <span class="muted">@{{.Handle}}@{{$.LocalDomain}}</span>
+          </div>
+        </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p class="muted">Nenhum seguidor ainda.</p>
+  {{end}}
+</section>
+
+<section class="panel" id="seguindo">
+  <h2>Seguindo</h2>
+
+  {{if .ProfileFollowing}}
+    <ul class="followers">
+      {{range .ProfileFollowing}}
+        <li class="follower">
+          <div>
+            <a href="/perfil/{{.Handle}}">{{if .DisplayName}}{{.DisplayName}}{{else}}@{{.Handle}}{{end}}</a>
+            <span class="muted">@{{.Handle}}@{{$.LocalDomain}}</span>
+          </div>
+        </li>
+      {{end}}
+    </ul>
+  {{else}}
+    <p class="muted">Ainda não segue ninguém.</p>
   {{end}}
 </section>
 {{end}}

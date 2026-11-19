@@ -41,7 +41,14 @@ var (
 	ErrWeakPassword         = errors.New("senha fraca")
 	ErrNotFound             = errors.New("registro não encontrado")
 	ErrSessionExpired       = errors.New("sessão expirada")
+	ErrCannotFollowSelf     = errors.New("não é possível seguir a própria pessoa")
 )
+
+// FollowStats reúne as contagens de seguidores e de pessoas seguidas.
+type FollowStats struct {
+	Followers int
+	Following int
+}
 
 // Person representa a identidade individual de um participante.
 type Person struct {

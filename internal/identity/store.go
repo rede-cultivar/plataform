@@ -468,6 +468,108 @@ func (s *Store) ListAccountsWithRoles(ctx context.Context) ([]Account, error) {
 	return accounts, nil
 }
 
+// Follow registra que uma pessoa passou a seguir outra.
+//
+// Repetir a operação não gera erro: o vínculo é idempotente.
+func (s *Store) Follow(ctx context.Context, followerID, followedID string) error {
+	_, err := s.db.Exec(ctx, `
+		INSERT INTO person_follows (follower_id, followed_id)
+		VALUES ($1::uuid, $2::uuid)
+		ON CONFLICT (follower_id, followed_id) DO NOTHING
+	`, followerID, followedID)
+	return err
+}
+
+// Unfollow remove o vínculo de acompanhamento, se existir.
+func (s *Store) Unfollow(ctx context.Context, followerID, followedID string) error {
+	_, err := s.db.Exec(ctx, `
+		DELETE FROM person_follows
+		WHERE follower_id::text = $1
+		  AND followed_id::text = $2
+	`, followerID, followedID)
+	return err
+}
+
+// IsFollowing informa se uma pessoa segue outra.
+func (s *Store) IsFollowing(ctx context.Context, followerID, followedID string) (bool, error) {
+	var following bool
+	err := s.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM person_follows
+			WHERE follower_id::text = $1
+			  AND followed_id::text = $2
+		)
+	`, followerID, followedID).Scan(&following)
+	return following, err
+}
+
+// ListFollowers lista as pessoas que seguem uma pessoa.
+func (s *Store) ListFollowers(ctx context.Context, personID string) ([]Person, error) {
+	return s.listFollowPeople(ctx, `
+		SELECT p.id::text, p.handle, p.display_name, p.bio, p.created_at
+		FROM person_follows f
+		JOIN people p ON p.id = f.follower_id
+		WHERE f.followed_id::text = $1
+		ORDER BY p.display_name, p.handle
+	`, personID)
+}
+
+// ListFollowing lista as pessoas seguidas por uma pessoa.
+func (s *Store) ListFollowing(ctx context.Context, personID string) ([]Person, error) {
+	return s.listFollowPeople(ctx, `
+		SELECT p.id::text, p.handle, p.display_name, p.bio, p.created_at
+		FROM person_follows f
+		JOIN people p ON p.id = f.followed_id
+		WHERE f.follower_id::text = $1
+		ORDER BY p.display_name, p.handle
+	`, personID)
+}
+
+func (s *Store) listFollowPeople(ctx context.Context, query, personID string) ([]Person, error) {
+	rows, err := s.db.Query(ctx, query, personID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	people := make([]Person, 0)
+	for rows.Next() {
+		var person Person
+		if err := rows.Scan(
+			&person.ID,
+			&person.Handle,
+			&person.DisplayName,
+			&person.Bio,
+			&person.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		people = append(people, person)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return people, nil
+}
+
+// FollowStats conta seguidores e pessoas seguidas.
+func (s *Store) FollowStats(ctx context.Context, personID string) (FollowStats, error) {
+	var stats FollowStats
+	err := s.db.QueryRow(ctx, `
+		SELECT
+			count(*) FILTER (WHERE followed_id::text = $1),
+			count(*) FILTER (WHERE follower_id::text = $1)
+		FROM person_follows
+		WHERE followed_id::text = $1 OR follower_id::text = $1
+	`, personID).Scan(&stats.Followers, &stats.Following)
+	if err != nil {
+		return FollowStats{}, err
+	}
+	return stats, nil
+}
+
 func isUniqueViolation(err error, constraint string) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == constraint

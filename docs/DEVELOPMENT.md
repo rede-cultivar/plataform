@@ -154,6 +154,24 @@ do Actor. As imagens de avatar são carregadas diretamente da instância remota
 pelo navegador; por isso a política de segurança de conteúdo permite imagens
 `https:` de qualquer origem.
 
+### Seguir pessoas e visibilidade `followers`
+
+Qualquer pessoa autenticada pode seguir outra pessoa da instância pelo botão no
+perfil (`POST /perfil/{handle}/seguir`) e deixar de seguir
+(`POST /perfil/{handle}/deixar`). O vínculo é imediato, sem pedido de aprovação,
+e fica em `person_follows`. O perfil mostra as listas de seguidores e de pessoas
+seguidas, além dos ciclos visíveis para quem consulta.
+
+A visibilidade `followers` é aplicada na leitura: ciclos e registros com essa
+visibilidade ficam acessíveis à pessoa responsável e a quem a segue. A regra
+vale também para `GET /media/{id}`, que verifica o vínculo antes de servir as
+imagens. Visitantes e pessoas que não seguem recebem `404` ao tentar abrir o
+ciclo ou o registro.
+
+A federação de conteúdo `followers` ainda não está implementada: apenas
+registros de ciclos públicos são distribuídos, e o acesso remoto a `/notas` e
+`/media` de conteúdo restrito será tratado em uma etapa própria.
+
 ## Diário de cultivo e práticas
 
 O diário registra a experiência de cultivo ao longo do tempo. Cada ciclo reúne
@@ -208,13 +226,15 @@ e o registro.
 
 O acesso a `GET /media/{id}` é verificado no servidor: a pessoa responsável vê
 todas as suas imagens, enquanto as demais só acessam imagens vinculadas a
-registros de ciclos públicos ou a práticas publicadas. Imagens de ciclos
-privados continuam protegidas pela mesma regra.
+registros de ciclos públicos, a registros de visibilidade `followers` de quem
+elas seguem, ou a práticas publicadas. Imagens de ciclos privados continuam
+protegidas pela mesma regra.
 
 Limitações atuais:
 
-- A visibilidade `followers` é aceita no modelo, mas ainda não é aplicada na
-  leitura: apenas a pessoa responsável e o público geral têm acesso garantido.
+- A federação de conteúdo `followers` ainda não está implementada: apenas
+  registros de ciclos públicos são distribuídos como `Note`, e o acesso remoto
+  a `/notas` e `/media` de conteúdo restrito precisa de uma decisão própria.
 - A federação publica registros de ciclos públicos como `Note`; práticas e
   atualizações ou exclusões de publicações já entregues ainda não são
   propagadas.

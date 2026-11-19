@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rede-cultivar/plataform/internal/cultivation"
 	"github.com/rede-cultivar/plataform/internal/identity"
 )
 
@@ -172,6 +173,170 @@ func TestProfileEditRequiresCSRF(t *testing.T) {
 
 	if response.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}
+
+func TestFollowAndUnfollowPerson(t *testing.T) {
+	fake := newFakeIdentity()
+	router := newAuthTestRouter(t, fake)
+	session := loginAsAna(t, router, fake)
+
+	fake.people["beto"] = &identity.Person{
+		ID:          "person-2",
+		Handle:      "beto",
+		DisplayName: "Beto Souza",
+		CreatedAt:   time.Now(),
+	}
+
+	csrf := getCSRFCookie(t, router, "/perfil/beto")
+	response := postForm(router, "/perfil/beto/seguir", url.Values{
+		"csrf_token": {csrf.Value},
+	}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusSeeOther, response.Body.String())
+	}
+	if location := response.Header().Get("Location"); location != "/perfil/beto?aviso=seguindo" {
+		t.Fatalf("Location = %q, want /perfil/beto?aviso=seguindo", location)
+	}
+	if !fake.follows["person-1->person-2"] {
+		t.Fatal("follow relationship was not stored")
+	}
+
+	profile := httptest.NewRequest(http.MethodGet, "/perfil/beto", nil)
+	profile.AddCookie(session)
+	rendered := httptest.NewRecorder()
+	router.ServeHTTP(rendered, profile)
+	body := rendered.Body.String()
+
+	if !strings.Contains(body, "Deixar de seguir") {
+		t.Error("profile does not offer to unfollow")
+	}
+	if !strings.Contains(body, "1 seguidor") {
+		t.Error("profile does not show the follower count")
+	}
+
+	ownProfile := httptest.NewRequest(http.MethodGet, "/perfil/ana", nil)
+	ownProfile.AddCookie(session)
+	rendered = httptest.NewRecorder()
+	router.ServeHTTP(rendered, ownProfile)
+	if body := rendered.Body.String(); !strings.Contains(body, "1 seguindo") {
+		t.Error("own profile does not show the following count")
+	}
+
+	response = postForm(router, "/perfil/beto/deixar", url.Values{
+		"csrf_token": {csrf.Value},
+	}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusSeeOther)
+	}
+	if location := response.Header().Get("Location"); location != "/perfil/beto?aviso=deixou" {
+		t.Fatalf("Location = %q, want /perfil/beto?aviso=deixou", location)
+	}
+	if fake.follows["person-1->person-2"] {
+		t.Error("follow relationship was not removed")
+	}
+}
+
+func TestFollowSelfIsRejected(t *testing.T) {
+	fake := newFakeIdentity()
+	router := newAuthTestRouter(t, fake)
+	session := loginAsAna(t, router, fake)
+
+	csrf := getCSRFCookie(t, router, "/perfil/ana")
+	response := postForm(router, "/perfil/ana/seguir", url.Values{
+		"csrf_token": {csrf.Value},
+	}, session, csrf)
+
+	if response.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusSeeOther)
+	}
+	if location := response.Header().Get("Location"); location != "/perfil/ana?erro=proprio" {
+		t.Fatalf("Location = %q, want /perfil/ana?erro=proprio", location)
+	}
+}
+
+func TestFollowRequiresCSRF(t *testing.T) {
+	fake := newFakeIdentity()
+	router := newAuthTestRouter(t, fake)
+	session := loginAsAna(t, router, fake)
+
+	fake.people["beto"] = &identity.Person{
+		ID:          "person-2",
+		Handle:      "beto",
+		DisplayName: "Beto Souza",
+		CreatedAt:   time.Now(),
+	}
+
+	response := postForm(router, "/perfil/beto/seguir", url.Values{}, session)
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusForbidden)
+	}
+}
+
+func TestProfileShowsFollowerCycles(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice())
+	session := loginAsAna(t, router, identityService)
+
+	identityService.people["beto"] = &identity.Person{
+		ID:          "person-2",
+		Handle:      "beto",
+		DisplayName: "Beto Souza",
+		CreatedAt:   time.Now(),
+	}
+
+	cycle := sampleCycle("cycle-beto", cultivation.VisibilityFollowers)
+	cycle.PersonID = "person-2"
+	cycle.PersonHandle = "beto"
+	cultivationService.cycles[cycle.ID] = cycle
+
+	request := httptest.NewRequest(http.MethodGet, "/perfil/beto", nil)
+	request.AddCookie(session)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if body := response.Body.String(); strings.Contains(body, cycle.Name) {
+		t.Error("non-follower can see a followers cycle on the profile")
+	}
+
+	cultivationService.setFollowing("person-1", "person-2")
+
+	request = httptest.NewRequest(http.MethodGet, "/perfil/beto", nil)
+	request.AddCookie(session)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if body := response.Body.String(); !strings.Contains(body, cycle.Name) {
+		t.Error("follower cannot see a followers cycle on the profile")
+	}
+}
+
+func TestProfileHidesFollowerCyclesFromVisitors(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice())
+
+	identityService.people["beto"] = &identity.Person{
+		ID:          "person-2",
+		Handle:      "beto",
+		DisplayName: "Beto Souza",
+		CreatedAt:   time.Now(),
+	}
+
+	cycle := sampleCycle("cycle-beto", cultivation.VisibilityFollowers)
+	cycle.PersonID = "person-2"
+	cycle.PersonHandle = "beto"
+	cultivationService.cycles[cycle.ID] = cycle
+
+	request := httptest.NewRequest(http.MethodGet, "/perfil/beto", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if body := response.Body.String(); strings.Contains(body, cycle.Name) {
+		t.Error("anonymous visitor can see a followers cycle on the profile")
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -39,6 +40,12 @@ type IdentityService interface {
 	EndSession(ctx context.Context, token string) error
 	FindPersonByHandle(ctx context.Context, handle string) (*identity.Person, error)
 	FindPersonByID(ctx context.Context, id string) (*identity.Person, error)
+	Follow(ctx context.Context, followerID, followedID string) error
+	Unfollow(ctx context.Context, followerID, followedID string) error
+	IsFollowing(ctx context.Context, followerID, followedID string) (bool, error)
+	ListFollowers(ctx context.Context, personID string) ([]identity.Person, error)
+	ListFollowing(ctx context.Context, personID string) ([]identity.Person, error)
+	FollowStats(ctx context.Context, personID string) (identity.FollowStats, error)
 	UpdateProfile(ctx context.Context, personID, displayName, bio string) (*identity.Person, error)
 	Stats(ctx context.Context) (identity.Stats, error)
 	ListPendingAccounts(ctx context.Context) ([]identity.Account, error)
@@ -58,6 +65,7 @@ type CultivationService interface {
 	UpdateCycle(ctx context.Context, personID, cycleID string, input cultivation.CycleUpdateInput) (*cultivation.Cycle, error)
 	FindCycle(ctx context.Context, viewerID, cycleID string) (*cultivation.Cycle, []cultivation.Entry, error)
 	ListPersonCycles(ctx context.Context, personID string) ([]cultivation.Cycle, error)
+	ListVisibleCycles(ctx context.Context, viewerID, personID string) ([]cultivation.Cycle, error)
 	ListPublicCycles(ctx context.Context, filter cultivation.CycleFilter) ([]cultivation.Cycle, error)
 	CreateEntry(ctx context.Context, personID, cycleID string, input cultivation.EntryInput) (*cultivation.Entry, error)
 	UpdateEntry(ctx context.Context, personID, cycleID, entryID string, input cultivation.EntryInput) (*cultivation.Entry, error)
@@ -176,6 +184,11 @@ type pageData struct {
 
 	Followers []federation.Follower
 
+	Following        bool
+	FollowStats      identity.FollowStats
+	ProfileFollowers []identity.Person
+	ProfileFollowing []identity.Person
+
 	MeasurementsText  string
 	InterventionsText string
 	OccurrencesText   string
@@ -258,6 +271,8 @@ func NewRouter(deps Deps) http.Handler {
 	router.Post("/sair", s.logout)
 
 	router.Get("/perfil/{handle}", s.profile)
+	router.Post("/perfil/{handle}/seguir", s.requireAccount(s.followPerson))
+	router.Post("/perfil/{handle}/deixar", s.requireAccount(s.unfollowPerson))
 	router.Get("/conta", s.requireAccount(s.account))
 	router.Get("/conta/seguidores", s.requireAccount(s.accountFollowers))
 	router.Get("/conta/perfil", s.requireAccount(s.profileEditForm))
@@ -391,7 +406,117 @@ func (s *server) profile(w http.ResponseWriter, r *http.Request) {
 	data := s.newPage(w, r)
 	data.Person = person
 
+	stats, err := s.identity.FollowStats(r.Context(), person.ID)
+	if err != nil {
+		s.logger.Error("load follow stats", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.FollowStats = stats
+
+	data.ProfileFollowers, err = s.identity.ListFollowers(r.Context(), person.ID)
+	if err != nil {
+		s.logger.Error("list followers", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	data.ProfileFollowing, err = s.identity.ListFollowing(r.Context(), person.ID)
+	if err != nil {
+		s.logger.Error("list following", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	viewerID := ""
+	if account := accountFrom(r.Context()); account != nil {
+		viewerID = account.Person.ID
+		if account.Person.ID != person.ID {
+			data.Following, err = s.identity.IsFollowing(r.Context(), account.Person.ID, person.ID)
+			if err != nil {
+				s.logger.Error("check following", "error", err)
+				http.Error(w, "internal server error", http.StatusInternalServerError)
+				return
+			}
+		}
+	}
+
+	if s.cultivation != nil {
+		data.Cycles, err = s.cultivation.ListVisibleCycles(r.Context(), viewerID, person.ID)
+		if err != nil {
+			s.logger.Error("list visible cycles", "error", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	switch r.URL.Query().Get("aviso") {
+	case "seguindo":
+		data.Notice = "Você agora segue @" + person.Handle + "."
+	case "deixou":
+		data.Notice = "Você deixou de seguir @" + person.Handle + "."
+	}
+	if r.URL.Query().Get("erro") == "proprio" {
+		data.Error = "Você não pode seguir a si mesmo."
+	}
+
 	s.render(w, http.StatusOK, "profile.html", data)
+}
+
+// followPerson passa a seguir a pessoa do perfil.
+func (s *server) followPerson(w http.ResponseWriter, r *http.Request) {
+	s.changeFollow(w, r, true)
+}
+
+// unfollowPerson deixa de seguir a pessoa do perfil.
+func (s *server) unfollowPerson(w http.ResponseWriter, r *http.Request) {
+	s.changeFollow(w, r, false)
+}
+
+func (s *server) changeFollow(w http.ResponseWriter, r *http.Request, follow bool) {
+	if s.identity == nil {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if !s.parseForm(w, r) {
+		return
+	}
+	if !s.validateCSRF(r) {
+		http.Error(w, "Sessão do formulário expirada. Tente novamente.", http.StatusForbidden)
+		return
+	}
+
+	account := accountFrom(r.Context())
+	person, err := s.identity.FindPersonByHandle(r.Context(), chi.URLParam(r, "handle"))
+	if errors.Is(err, identity.ErrNotFound) {
+		http.Error(w, "página não encontrada", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.logger.Error("find person by handle", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if follow {
+		err = s.identity.Follow(r.Context(), account.Person.ID, person.ID)
+	} else {
+		err = s.identity.Unfollow(r.Context(), account.Person.ID, person.ID)
+	}
+	if errors.Is(err, identity.ErrCannotFollowSelf) {
+		http.Redirect(w, r, "/perfil/"+url.PathEscape(person.Handle)+"?erro=proprio", http.StatusSeeOther)
+		return
+	}
+	if err != nil {
+		s.logger.Error("change follow", "follow", follow, "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	notice := "seguindo"
+	if !follow {
+		notice = "deixou"
+	}
+	http.Redirect(w, r, "/perfil/"+url.PathEscape(person.Handle)+"?aviso="+notice, http.StatusSeeOther)
 }
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {

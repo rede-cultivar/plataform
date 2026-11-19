@@ -138,7 +138,8 @@ func (s *Store) ListByEntryIDs(ctx context.Context, entryIDs []string) (map[stri
 // CanView informa se a pessoa pode acessar a mídia.
 //
 // A pessoa responsável sempre pode acessar. As demais só podem ver mídias
-// vinculadas a registros ou práticas efetivamente públicas.
+// vinculadas a registros efetivamente públicos ou a registros de visibilidade
+// "followers" quando seguem a pessoa responsável, além de práticas publicadas.
 func (s *Store) CanView(ctx context.Context, id, viewerID string) (bool, error) {
 	var allowed bool
 	err := s.db.QueryRow(ctx, `
@@ -155,9 +156,23 @@ func (s *Store) CanView(ctx context.Context, id, viewerID string) (bool, error) 
 				JOIN cultivation_entries e ON e.id = em.entry_id
 				JOIN cultivation_cycles c ON c.id = e.cycle_id
 				WHERE em.media_id::text = $1
-				  AND c.visibility = 'public'
 				  AND c.status <> 'archived'
-				  AND e.visibility IN ('inherit', 'public')
+				  AND (
+				    (c.visibility = 'public' AND e.visibility IN ('inherit', 'public'))
+				    OR (
+				      c.visibility <> 'private'
+				      AND (
+				        e.visibility = 'followers'
+				        OR (e.visibility IN ('inherit', 'public') AND c.visibility = 'followers')
+				      )
+				      AND EXISTS (
+				        SELECT 1
+				        FROM person_follows f
+				        WHERE f.follower_id::text = $2
+				          AND f.followed_id = c.person_id
+				      )
+				    )
+				  )
 			)
 			OR EXISTS (
 				SELECT 1

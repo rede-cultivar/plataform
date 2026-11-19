@@ -117,18 +117,50 @@ func TestEntryEffectiveVisibility(t *testing.T) {
 
 func TestCycleCanView(t *testing.T) {
 	private := &Cycle{PersonID: "person-1", Visibility: VisibilityPrivate}
-	if private.CanView("") {
+	if private.CanView(Viewer{}) {
 		t.Error("anonymous viewer can see private cycle")
 	}
-	if private.CanView("person-2") {
+	if private.CanView(Viewer{PersonID: "person-2"}) {
 		t.Error("other person can see private cycle")
 	}
-	if !private.CanView("person-1") {
+	if !private.CanView(Viewer{PersonID: "person-1"}) {
 		t.Error("owner cannot see private cycle")
 	}
 
 	public := &Cycle{PersonID: "person-1", Visibility: VisibilityPublic}
-	if !public.CanView("") {
+	if !public.CanView(Viewer{}) {
 		t.Error("anonymous viewer cannot see public cycle")
+	}
+
+	followers := &Cycle{PersonID: "person-1", Visibility: VisibilityFollowers}
+	if followers.CanView(Viewer{}) {
+		t.Error("anonymous viewer can see followers cycle")
+	}
+	if followers.CanView(Viewer{PersonID: "person-2"}) {
+		t.Error("non-follower can see followers cycle")
+	}
+	if !followers.CanView(Viewer{PersonID: "person-2", Following: true}) {
+		t.Error("follower cannot see followers cycle")
+	}
+	if !followers.CanView(Viewer{PersonID: "person-1"}) {
+		t.Error("owner cannot see followers cycle")
+	}
+}
+
+func TestEntryCanView(t *testing.T) {
+	cycle := &Cycle{PersonID: "person-1", Visibility: VisibilityFollowers}
+	follower := Viewer{PersonID: "person-2", Following: true}
+
+	if !(&Entry{Visibility: EntryVisibilityInherit}).CanView(follower, cycle) {
+		t.Error("follower cannot see inherited entry")
+	}
+	if !(&Entry{Visibility: EntryVisibilityPublic}).CanView(follower, cycle) {
+		t.Error("follower cannot see public entry in followers cycle")
+	}
+	if (&Entry{Visibility: EntryVisibilityPrivate}).CanView(follower, cycle) {
+		t.Error("follower can see private entry")
+	}
+	if (&Entry{Visibility: EntryVisibilityInherit}).CanView(Viewer{PersonID: "person-3"}, cycle) {
+		t.Error("non-follower can see followers entry")
 	}
 }

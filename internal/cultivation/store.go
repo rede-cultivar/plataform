@@ -186,6 +186,55 @@ func (s *Store) ListPersonCycles(ctx context.Context, personID string) ([]Cycle,
 	return scanCycles(rows)
 }
 
+// ListVisibleCycles lista os ciclos de uma pessoa que quem consulta pode ver.
+//
+// A pessoa responsável vê todos os ciclos. As demais veem os públicos e, quando
+// seguem a pessoa, também os de visibilidade "followers". Ciclos arquivados
+// continuam visíveis apenas para a pessoa responsável.
+func (s *Store) ListVisibleCycles(ctx context.Context, viewerID, personID string) ([]Cycle, error) {
+	rows, err := s.db.Query(ctx, `
+		SELECT `+cycleColumns+`
+		FROM cultivation_cycles c
+		JOIN people p ON p.id = c.person_id
+		WHERE c.person_id::text = $1
+		  AND (
+		    c.person_id::text = $2
+		    OR c.visibility = 'public'
+		    OR (
+		      c.visibility = 'followers'
+		      AND EXISTS (
+		        SELECT 1
+		        FROM person_follows f
+		        WHERE f.follower_id::text = $2
+		          AND f.followed_id = c.person_id
+		      )
+		    )
+		  )
+		  AND (c.person_id::text = $2 OR c.status <> 'archived')
+		ORDER BY c.started_on DESC, c.created_at DESC
+	`, personID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanCycles(rows)
+}
+
+// IsFollowing informa se uma pessoa segue outra.
+func (s *Store) IsFollowing(ctx context.Context, followerID, followedID string) (bool, error) {
+	var following bool
+	err := s.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM person_follows
+			WHERE follower_id::text = $1
+			  AND followed_id::text = $2
+		)
+	`, followerID, followedID).Scan(&following)
+	return following, err
+}
+
 // ListPublicCycles lista ciclos públicos, aplicando os filtros informados.
 func (s *Store) ListPublicCycles(ctx context.Context, filter CycleFilter) ([]Cycle, error) {
 	filter = NormalizeFilter(filter)

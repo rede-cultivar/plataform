@@ -196,6 +196,60 @@ func (s *Service) FindPersonByID(ctx context.Context, id string) (*Person, error
 	return s.store.FindPersonByID(ctx, strings.TrimSpace(id))
 }
 
+// Follow passa a seguir outra pessoa da instância.
+//
+// O vínculo local é imediato e não depende de aprovação, diferente do Follow
+// federado, que só passa a valer depois de um Accept.
+func (s *Service) Follow(ctx context.Context, followerID, followedID string) error {
+	followerID = strings.TrimSpace(followerID)
+	followedID = strings.TrimSpace(followedID)
+	if followerID == "" || followedID == "" {
+		return ErrNotFound
+	}
+	if followerID == followedID {
+		return ErrCannotFollowSelf
+	}
+	if _, err := s.store.FindPersonByID(ctx, followedID); err != nil {
+		return err
+	}
+
+	return s.store.Follow(ctx, followerID, followedID)
+}
+
+// Unfollow deixa de seguir outra pessoa.
+func (s *Service) Unfollow(ctx context.Context, followerID, followedID string) error {
+	followerID = strings.TrimSpace(followerID)
+	followedID = strings.TrimSpace(followedID)
+	if followerID == "" || followedID == "" {
+		return ErrNotFound
+	}
+
+	return s.store.Unfollow(ctx, followerID, followedID)
+}
+
+// IsFollowing informa se uma pessoa segue outra.
+func (s *Service) IsFollowing(ctx context.Context, followerID, followedID string) (bool, error) {
+	if followerID == "" || followedID == "" || followerID == followedID {
+		return false, nil
+	}
+	return s.store.IsFollowing(ctx, followerID, followedID)
+}
+
+// ListFollowers lista as pessoas que seguem uma pessoa.
+func (s *Service) ListFollowers(ctx context.Context, personID string) ([]Person, error) {
+	return s.store.ListFollowers(ctx, strings.TrimSpace(personID))
+}
+
+// ListFollowing lista as pessoas seguidas por uma pessoa.
+func (s *Service) ListFollowing(ctx context.Context, personID string) ([]Person, error) {
+	return s.store.ListFollowing(ctx, strings.TrimSpace(personID))
+}
+
+// FollowStats conta seguidores e pessoas seguidas.
+func (s *Service) FollowStats(ctx context.Context, personID string) (FollowStats, error) {
+	return s.store.FollowStats(ctx, strings.TrimSpace(personID))
+}
+
 // UpdateProfile valida e atualiza o nome de exibição e a biografia.
 func (s *Service) UpdateProfile(ctx context.Context, personID, displayName, bio string) (*Person, error) {
 	displayName = strings.TrimSpace(displayName)

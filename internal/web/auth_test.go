@@ -24,6 +24,7 @@ type fakeIdentity struct {
 	accounts    map[string]*identity.Account
 	people      map[string]*identity.Person
 	sessions    map[string]*identity.Account
+	follows     map[string]bool
 	registerErr error
 	authErr     error
 	updateErr   error
@@ -36,6 +37,7 @@ func newFakeIdentity() *fakeIdentity {
 		accounts: make(map[string]*identity.Account),
 		people:   make(map[string]*identity.Person),
 		sessions: make(map[string]*identity.Account),
+		follows:  make(map[string]bool),
 	}
 }
 
@@ -125,6 +127,68 @@ func (f *fakeIdentity) FindPersonByID(_ context.Context, id string) (*identity.P
 		}
 	}
 	return nil, identity.ErrNotFound
+}
+
+func (f *fakeIdentity) Follow(_ context.Context, followerID, followedID string) error {
+	if followerID == followedID {
+		return identity.ErrCannotFollowSelf
+	}
+	if _, err := f.FindPersonByID(context.Background(), followedID); err != nil {
+		return err
+	}
+	f.follows[followerID+"->"+followedID] = true
+	return nil
+}
+
+func (f *fakeIdentity) Unfollow(_ context.Context, followerID, followedID string) error {
+	delete(f.follows, followerID+"->"+followedID)
+	return nil
+}
+
+func (f *fakeIdentity) IsFollowing(_ context.Context, followerID, followedID string) (bool, error) {
+	return f.follows[followerID+"->"+followedID], nil
+}
+
+func (f *fakeIdentity) ListFollowers(_ context.Context, personID string) ([]identity.Person, error) {
+	people := make([]identity.Person, 0)
+	for key := range f.follows {
+		followerID, followedID, _ := strings.Cut(key, "->")
+		if followedID != personID {
+			continue
+		}
+		if person, err := f.FindPersonByID(context.Background(), followerID); err == nil {
+			people = append(people, *person)
+		}
+	}
+	return people, nil
+}
+
+func (f *fakeIdentity) ListFollowing(_ context.Context, personID string) ([]identity.Person, error) {
+	people := make([]identity.Person, 0)
+	for key := range f.follows {
+		followerID, followedID, _ := strings.Cut(key, "->")
+		if followerID != personID {
+			continue
+		}
+		if person, err := f.FindPersonByID(context.Background(), followedID); err == nil {
+			people = append(people, *person)
+		}
+	}
+	return people, nil
+}
+
+func (f *fakeIdentity) FollowStats(_ context.Context, personID string) (identity.FollowStats, error) {
+	var stats identity.FollowStats
+	for key := range f.follows {
+		followerID, followedID, _ := strings.Cut(key, "->")
+		if followedID == personID {
+			stats.Followers++
+		}
+		if followerID == personID {
+			stats.Following++
+		}
+	}
+	return stats, nil
 }
 
 func (f *fakeIdentity) UpdateProfile(_ context.Context, personID, displayName, bio string) (*identity.Person, error) {
