@@ -72,6 +72,52 @@ novos `up`. O S3Mock continua disponível e volta a ser usado quando
 O diretório `tmp/` já está no `.gitignore`. Para descartar as mídias locais,
 remova `tmp/media` ou o volume com `make reset`.
 
+## Interface, PWA e assets
+
+A interface é renderizada no servidor com templates Go e um único CSS. O
+JavaScript é opcional e serve apenas para registrar o service worker, fechar o
+menu **Mais** e avisar quando a rede cai. O design system está documentado em
+[`DESIGN.md`](DESIGN.md) e a decisão em
+[ADR 0013](decisions/0013-experiencia-mobile-pwa-e-redesenho.md).
+
+| Rota | Descrição |
+| --- | --- |
+| `GET /manifest.webmanifest` | Manifest da PWA, com ícones, cores e atalhos |
+| `GET /sw.js` | Service worker na raiz, com a versão atual dos assets |
+| `GET /offline` | Página de fallback para navegações sem rede |
+| `GET /static/*` | CSS, JavaScript, manifest de origem e ícones embutidos |
+
+Os assets ficam em `internal/web/static` e são embutidos no binário. O servidor
+calcula um hash SHA-256 do conteúdo na inicialização e o usa como `?v=<hash>` em
+`app.css` e `app.js`. Como o binário de produção pode informar a versão `dev`,
+esse hash é o que garante a atualização do cache.
+
+O service worker pré-cacheia apenas `/offline`, CSS, JavaScript, manifest e
+ícones. Navegações usam a rede primeiro e caem para `/offline` quando falham.
+Nenhuma página autenticada, resposta de formulário ou mídia privada entra no
+cache. Para testar localmente, use `make run`, abra o site, recarregue uma vez e
+simule a ausência de rede nas ferramentas do navegador.
+
+A CSP permite apenas recursos da própria origem, com exceção de imagens remotas
+do Fediverso:
+
+```
+default-src 'self'; img-src 'self' data: https:; style-src 'self';
+script-src 'self'; worker-src 'self'; manifest-src 'self';
+base-uri 'self'; form-action 'self'
+```
+
+Os ícones ficam em `internal/web/static/icons` e podem ser regerados a partir dos
+SVGs com `rsvg-convert`:
+
+```sh
+cd internal/web/static/icons
+rsvg-convert -w 192 -h 192 icon.svg -o icon-192.png
+rsvg-convert -w 512 -h 512 icon.svg -o icon-512.png
+rsvg-convert -w 512 -h 512 icon-maskable.svg -o icon-maskable-512.png
+rsvg-convert -w 180 -h 180 icon.svg -o apple-touch-icon.png
+```
+
 ## Contas e sessões
 
 A primeira entrega funcional implementa contas locais com e-mail e senha:
@@ -370,10 +416,10 @@ internal/
     database/          pool PostgreSQL
     logging/           logs estruturados
     storage/           backends de mídia (S3 e filesystem)
-  web/                 roteador, handlers, templates e ativos
+  web/                 roteador, handlers, templates, CSS, JS, manifest e service worker
   worker/              processamento assíncrono
 migrations/            migrações SQL versionadas
-docs/                  visão, arquitetura, roadmap e ADRs
+docs/                  visão, arquitetura, design, roadmap e ADRs
 ```
 
 ## Migrações

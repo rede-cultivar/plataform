@@ -121,6 +121,7 @@ curl http://localhost:8080/readyz
 | [Arquitetura](docs/ARCHITECTURE.md) | Princípios, contextos, componentes e integrações. |
 | [Roadmap](docs/ROADMAP.md) | Etapas de evolução e prioridades do projeto. |
 | [Desenvolvimento](docs/DEVELOPMENT.md) | Ambiente local, rotas, comandos, configuração e limitações. |
+| [Design](docs/DESIGN.md) | Tokens, componentes, navegação e padrões de interface. |
 | [Decisões de arquitetura (ADRs)](docs/decisions/README.md) | Registro aberto das decisões técnicas e de produto. |
 | [Ficha de plantio de sementes](docs/FICHA_PLANTIO_SEMENTES.md) | Modelo de registro usado como referência para o diário. |
 

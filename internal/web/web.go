@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"html/template"
@@ -11,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -143,6 +146,7 @@ type server struct {
 	logger       *slog.Logger
 	templates    map[string]*template.Template
 	authLimiter  *rateLimiter
+	assetVersion string
 }
 
 // pageData reúne os dados comuns às páginas renderizadas.
@@ -150,6 +154,8 @@ type pageData struct {
 	InstanceName string
 	Env          string
 	Version      string
+	AssetVersion string
+	Path         string
 	LocalDomain  string
 	Year         int
 
@@ -220,6 +226,24 @@ func (d pageData) MediaURL(id string) string {
 	return "/media/" + url.PathEscape(id)
 }
 
+// Active informa se o caminho atual pertence a algum dos prefixos indicados.
+//
+// É usado pelo shell para marcar o item de navegação correspondente à página.
+func (d pageData) Active(prefixes ...string) bool {
+	for _, prefix := range prefixes {
+		if prefix == "/" {
+			if d.Path == "/" {
+				return true
+			}
+			continue
+		}
+		if d.Path == prefix || strings.HasPrefix(d.Path, prefix+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 var pageFiles = []string{
 	"home.html",
 	"register.html",
@@ -241,6 +265,7 @@ var pageFiles = []string{
 	"practice_new.html",
 	"practice.html",
 	"practice_edit.html",
+	"offline.html",
 }
 
 // NewRouter monta o roteador HTTP da aplicação.
@@ -272,6 +297,8 @@ func NewRouter(deps Deps) http.Handler {
 		panic(err)
 	}
 
+	s.assetVersion = staticVersion(staticFS)
+
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
@@ -282,6 +309,9 @@ func NewRouter(deps Deps) http.Handler {
 
 	router.Get("/healthz", s.health)
 	router.Get("/readyz", s.ready)
+	router.Get("/manifest.webmanifest", s.manifest)
+	router.Get("/sw.js", s.serviceWorker)
+	router.Get("/offline", s.offline)
 	router.Get("/", s.home)
 
 	router.Get("/cadastro", s.registerForm)
@@ -344,7 +374,7 @@ func NewRouter(deps Deps) http.Handler {
 	router.Get("/respostas/{id}", s.replyNote)
 	router.Get("/activities/{id}", s.activity)
 
-	router.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	router.Handle("/static/*", cacheStatic(http.StripPrefix("/static/", http.FileServer(http.FS(staticFS)))))
 
 	router.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "página não encontrada", http.StatusNotFound)
@@ -359,6 +389,8 @@ func (s *server) newPage(w http.ResponseWriter, r *http.Request) pageData {
 		InstanceName:              s.cfg.InstanceName,
 		Env:                       s.cfg.Env,
 		Version:                   version.Version,
+		AssetVersion:              s.assetVersion,
+		Path:                      r.URL.Path,
 		LocalDomain:               s.cfg.LocalDomain,
 		Year:                      time.Now().Year(),
 		Account:                   account,
@@ -401,6 +433,98 @@ func (s *server) render(w http.ResponseWriter, status int, page string, data pag
 
 func (s *server) home(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "home.html", s.newPage(w, r))
+}
+
+// manifest entrega o manifest da PWA a partir dos assets embutidos.
+func (s *server) manifest(w http.ResponseWriter, r *http.Request) {
+	data, err := fs.ReadFile(assets, "static/manifest.webmanifest")
+	if err != nil {
+		s.logger.Error("read manifest", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/manifest+json; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(data)
+}
+
+// serviceWorker entrega o service worker na raiz, com a versão dos assets.
+//
+// O arquivo precisa ser servido em /sw.js para que o escopo alcance toda a
+// aplicação. A versão injetada invalida o cache quando os assets mudam.
+func (s *server) serviceWorker(w http.ResponseWriter, r *http.Request) {
+	data, err := fs.ReadFile(assets, "static/sw.js")
+	if err != nil {
+		s.logger.Error("read service worker", "error", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	body := strings.ReplaceAll(string(data), "__ASSET_VERSION__", s.assetVersion)
+
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Service-Worker-Allowed", "/")
+	_, _ = io.WriteString(w, body)
+}
+
+// offline renderiza a página exibida quando uma navegação falha sem rede.
+//
+// A página não consulta o banco nem depende de sessão para poder ser
+// pré-cacheada pelo service worker.
+func (s *server) offline(w http.ResponseWriter, r *http.Request) {
+	data := pageData{
+		InstanceName: s.cfg.InstanceName,
+		Env:          s.cfg.Env,
+		Version:      version.Version,
+		AssetVersion: s.assetVersion,
+		Path:         r.URL.Path,
+		LocalDomain:  s.cfg.LocalDomain,
+		Year:         time.Now().Year(),
+	}
+	s.render(w, http.StatusOK, "offline.html", data)
+}
+
+// staticVersion calcula um hash do conteúdo dos assets embutidos.
+//
+// A versão do binário pode ser "dev" em produção; o hash garante que CSS e
+// JavaScript sejam atualizados mesmo quando a versão não muda.
+func staticVersion(fsys fs.FS) string {
+	hash := sha256.New()
+	err := fs.WalkDir(fsys, ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+
+		data, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return err
+		}
+
+		_, _ = hash.Write([]byte(path))
+		_, _ = hash.Write([]byte{0})
+		_, _ = hash.Write(data)
+		return nil
+	})
+	if err != nil {
+		return version.Version
+	}
+
+	return hex.EncodeToString(hash.Sum(nil))[:12]
+}
+
+// cacheStatic permite cache de longo prazo para os assets estáticos.
+//
+// CSS e JavaScript carregam ?v=<hash>, então uma nova versão muda a URL.
+func cacheStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=604800")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *server) account(w http.ResponseWriter, r *http.Request) {
@@ -588,7 +712,7 @@ func (s *server) securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self'; base-uri 'self'; form-action 'self'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: https:; style-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'")
 
 		if s.cfg.IsProduction() {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")

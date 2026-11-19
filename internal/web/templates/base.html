@@ -3,41 +3,149 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{{.InstanceName}}</title>
-  <link rel="stylesheet" href="/static/app.css">
+  <meta name="description" content="Diário de cultivo, práticas e comunidade para agroecologia.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#2f6b3a" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141a14" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Cultivar">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="/static/app.css?v={{.AssetVersion}}">
+  <script src="/static/app.js?v={{.AssetVersion}}" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+
+  <p class="offline-banner" data-offline-banner role="status" hidden>
+    Sem conexão. O conteúdo já carregado continua disponível.
+  </p>
+
   <header class="site-header">
-    <a class="brand" href="/">{{.InstanceName}}</a>
-    <nav class="site-nav">
-      <a href="/diario">Diário</a>
-      <a href="/praticas">Práticas</a>
-      {{if .IsAdmin}}<a href="/admin/settings">Administração</a>{{end}}
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 21v-8"/>
+          <path d="M12 13c-4 0-6.5-2.5-7-6.5 4-.3 6.5 2.2 7 6.5Z"/>
+          <path d="M12 10c3.5-.4 6-2.7 6.5-6.5-3.8-.3-6.2 2.2-6.5 6.5Z"/>
+        </svg>
+      </span>
+      <span>{{.InstanceName}}</span>
+    </a>
+
+    <nav class="site-nav" aria-label="Navegação principal">
+      <a href="/" {{if .Active "/"}}aria-current="page"{{end}}>Início</a>
+      <a href="/diario" {{if .Active "/diario"}}aria-current="page"{{end}}>Diário</a>
+      <a href="/praticas" {{if .Active "/praticas"}}aria-current="page"{{end}}>Práticas</a>
       {{if .Account}}
-        <a href="/perfil/{{.Account.Person.Handle}}">Meu perfil</a>
-        <a href="/conta">Minha conta</a>
+        <a href="/perfil/{{.Account.Person.Handle}}" {{if .Active "/perfil"}}aria-current="page"{{end}}>Perfil</a>
+      {{end}}
+      {{if .IsAdmin}}<a href="/admin/settings" {{if .Active "/admin"}}aria-current="page"{{end}}>Administração</a>{{end}}
+    </nav>
+
+    <div class="header-actions">
+      {{if .Account}}
+        <a class="button button-secondary button-small" href="/conta">Minha conta</a>
         <form method="post" action="/sair" class="inline-form">
           <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
           <button type="submit" class="link-button">Sair</button>
         </form>
       {{else}}
-        <a href="/entrar">Entrar</a>
-        {{if .RegistrationsOpen}}<a href="/cadastro">Criar conta</a>{{end}}
+        <a class="button button-secondary button-small" href="/entrar">Entrar</a>
+        {{if .RegistrationsOpen}}<a class="button button-small" href="/cadastro">Criar conta</a>{{end}}
       {{end}}
       <span class="badge">ambiente {{.Env}}</span>
-    </nav>
+    </div>
   </header>
 
-  <main>
+  <main id="conteudo" tabindex="-1">
     {{if .Error}}<p class="alert alert-error" role="alert">{{.Error}}</p>{{end}}
     {{if .Notice}}<p class="alert alert-success" role="status">{{.Notice}}</p>{{end}}
     {{template "content" .}}
   </main>
 
-  <footer>
+  <footer class="site-footer">
     <p>Cultivar · versão {{.Version}} · {{.Year}}</p>
+    <nav aria-label="Estado da instância">
+      <a href="/healthz">Verificação de vida</a>
+      <a href="/readyz">Prontidão</a>
+    </nav>
   </footer>
+
+  <nav class="bottom-nav" aria-label="Navegação principal">
+    <a class="bottom-nav-link" href="/" {{if .Active "/"}}aria-current="page"{{end}}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 10.5 12 3l9 7.5"/>
+        <path d="M5 9.5V21h14V9.5"/>
+        <path d="M9 21v-6h6v6"/>
+      </svg>
+      <span>Início</span>
+    </a>
+
+    <a class="bottom-nav-link" href="/diario" {{if .Active "/diario"}}aria-current="page"{{end}}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 21v-8"/>
+        <path d="M12 13c-4 0-6.5-2.5-7-6.5 4-.3 6.5 2.2 7 6.5Z"/>
+        <path d="M12 10c3.5-.4 6-2.7 6.5-6.5-3.8-.3-6.2 2.2-6.5 6.5Z"/>
+      </svg>
+      <span>Diário</span>
+    </a>
+
+    <a class="bottom-nav-link" href="/praticas" {{if .Active "/praticas"}}aria-current="page"{{end}}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5Z"/>
+        <path d="M4 20.5A2.5 2.5 0 0 1 6.5 18H20"/>
+      </svg>
+      <span>Práticas</span>
+    </a>
+
+    <a class="bottom-nav-link" href="{{if .Account}}/perfil/{{.Account.Person.Handle}}{{else}}/entrar{{end}}" {{if .Active "/perfil" "/conta"}}aria-current="page"{{end}}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="8" r="3.5"/>
+        <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/>
+      </svg>
+      <span>Perfil</span>
+    </a>
+
+    <details class="bottom-more" data-more-menu>
+      <summary aria-label="Mais opções" {{if .Active "/admin"}}aria-current="page"{{end}}>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="5" cy="12" r="1.7"/>
+          <circle cx="12" cy="12" r="1.7"/>
+          <circle cx="19" cy="12" r="1.7"/>
+        </svg>
+        <span>Mais</span>
+      </summary>
+
+      <div class="more-panel">
+        {{if .Account}}
+          <p class="more-heading">Conta</p>
+          <a href="/conta">Minha conta</a>
+          <a href="/perfil/{{.Account.Person.Handle}}">Meu perfil</a>
+          <a href="/conta/seguidores">Seguidores</a>
+          {{if .IsAdmin}}<a href="/admin/settings">Administração</a>{{end}}
+          <p class="more-heading">Instância</p>
+          <a href="/healthz">Verificação de vida</a>
+          <a href="/readyz">Prontidão</a>
+          <form method="post" action="/sair">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <button type="submit" class="link-button">Sair</button>
+          </form>
+        {{else}}
+          <p class="more-heading">Acesso</p>
+          <a href="/entrar">Entrar</a>
+          {{if .RegistrationsOpen}}<a href="/cadastro">Criar conta</a>{{end}}
+          <p class="more-heading">Instância</p>
+          <a href="/healthz">Verificação de vida</a>
+          <a href="/readyz">Prontidão</a>
+        {{end}}
+      </div>
+    </details>
+  </nav>
 </body>
 </html>
 {{end}}

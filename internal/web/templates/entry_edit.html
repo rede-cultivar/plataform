@@ -13,7 +13,7 @@
         {{range .}}
           <label class="media-choice">
             <input type="checkbox" name="delete_photo" value="{{.ID}}">
-            <img src="/media/{{.ID}}" alt="{{.OriginalName}}" loading="lazy" style="max-width: 120px; max-height: 120px; object-fit: cover;">
+            <img class="media-choice-thumb" src="/media/{{.ID}}" alt="{{.OriginalName}}" loading="lazy">
             <span>{{.OriginalName}}</span>
             <span class="media-choice-action">Remover</span>
           </label>

@@ -1,15 +1,19 @@
 {{define "content"}}
 <section class="hero">
+  <p class="tag">Rede de cultivo comunitário</p>
   <h1>{{.InstanceName}}</h1>
-  <p>Infraestrutura digital comunitária para cultivo, agroecologia e colaboração.</p>
+  <p class="lead">
+    Registre o que acontece na horta, acompanhe ciclos de cultivo e compartilhe
+    práticas que funcionam na prática.
+  </p>
   <p class="muted">
-    Esta é a base de desenvolvimento da plataforma. A federação e os recursos
-    de comunidade serão adicionados incrementalmente.
+    Uma instância independente, feita para agroecologia e colaboração. O diário
+    e a biblioteca de práticas também alcançam o Fediverso.
   </p>
 
   {{if .Account}}
     <p class="actions">
-      <a class="button" href="/conta">Minha conta</a>
+      <a class="button" href="/diario/meu">Ir para meu diário</a>
       <a class="button button-secondary" href="/perfil/{{.Account.Person.Handle}}">Ver meu perfil</a>
     </p>
   {{else}}
@@ -19,10 +23,29 @@
     </p>
     {{if not .RegistrationsOpen}}<p class="muted">{{.ClosedRegistrationsNotice}}</p>{{end}}
   {{end}}
-
-  <ul class="links">
-    <li><a href="/healthz">/healthz</a> — verificação de vida</li>
-    <li><a href="/readyz">/readyz</a> — prontidão (banco e armazenamento)</li>
-  </ul>
 </section>
+
+<ul class="cards">
+  <li class="card">
+    <h2><a href="/diario">Diário de cultivo</a></h2>
+    <p class="muted">
+      Ciclos com observações, fotos, medidas, intervenções e resultados ao longo
+      do tempo.
+    </p>
+  </li>
+  <li class="card">
+    <h2><a href="/praticas">Conhecimento e práticas</a></h2>
+    <p class="muted">
+      Materiais, passo a passo, riscos e adaptações para reproduzir o que dá
+      certo em cada lugar.
+    </p>
+  </li>
+  <li class="card">
+    <h2><a href="/diario">Descobrir a comunidade</a></h2>
+    <p class="muted">
+      Acompanhe pessoas, veja cultivos públicos e siga quem compartilha
+      experiências parecidas com as suas.
+    </p>
+  </li>
+</ul>
 {{end}}

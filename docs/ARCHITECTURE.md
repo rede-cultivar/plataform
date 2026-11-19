@@ -543,6 +543,7 @@ As principais decisões técnicas estão registradas em Architecture Decision Re
 | Implantação e distribuição | Binário único e instâncias independentes | [0006](decisions/0006-estrategia-de-implantacao-e-operacao.md), [0010](decisions/0010-empacotamento-e-implantacao.md) |
 | Migração e atualização de instâncias | Migrações SQL versionadas e embutidas no binário | [0010](decisions/0010-empacotamento-e-implantacao.md) |
 | Diário de cultivo e biblioteca de práticas | Contextos próprios com publicação federada opcional | [0011](decisions/0011-diario-de-cultivo-e-biblioteca-de-praticas.md) |
+| Experiência mobile e instalação | PWA instalável com interface mobile-first e offline básico | [0013](decisions/0013-experiencia-mobile-pwa-e-redesenho.md) |
 
 Permanecem em aberto, para amadurecimento durante a implementação:
 
@@ -564,6 +565,7 @@ Este documento deve ser interpretado em conjunto com:
 - `governance/CODE_OF_CONDUCT.md` — Código de Conduta.
 - `governance/CONTRIBUTING.md` — Guia de Contribuição.
 - `docs/VISION.md` — Visão do Produto.
+- `docs/DESIGN.md` — Design system e padrões de interface.
 - `docs/ROADMAP.md` — Roadmap do Projeto.
 
 A arquitetura deverá servir à visão do produto e respeitar os princípios institucionais e comunitários do projeto.

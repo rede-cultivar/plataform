@@ -20,6 +20,7 @@ Cada decisão documenta o contexto, a decisão adotada, as alternativas consider
 | [0010](0010-empacotamento-e-implantacao.md) | Empacotamento, implantação e atualização | Proposto | 2026-11-10 |
 | [0011](0011-diario-de-cultivo-e-biblioteca-de-praticas.md) | Diário de cultivo e biblioteca de práticas | Proposto | 2026-11-14 |
 | [0012](0012-modos-de-cadastro-e-administracao-da-instancia.md) | Modos de cadastro e administração da instância | Proposto | 2026-11-16 |
+| [0013](0013-experiencia-mobile-pwa-e-redesenho.md) | Experiência mobile, PWA e redesenho da interface | Proposto | 2026-11-19 |
 
 Todas as decisões permanecem **abertas para revisão**. O projeto ainda não
 realizou a rodada de discussão com a comunidade e nenhum ADR deve ser

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Cultivar">
+  <rect width="512" height="512" fill="#2f6b3a"/>
+  <g transform="translate(256 256) scale(0.68) translate(-256 -256)">
+    <path d="M256 392V224" fill="none" stroke="#f7f5ef" stroke-width="26" stroke-linecap="round"/>
+    <path d="M256 312c-60 0-104-40-112-104 60-4 104 36 112 104Z" fill="#f7f5ef"/>
+    <path d="M256 264c54-6 94-44 102-104-56-4-96 34-102 104Z" fill="#c9e6cd"/>
+    <path d="M176 408h160" fill="none" stroke="#f7f5ef" stroke-width="18" stroke-linecap="round" opacity=".55"/>
+  </g>
+</svg>
