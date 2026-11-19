@@ -63,8 +63,8 @@
             <div class="entry-media">
               {{range .}}
                 <figure class="entry-photo">
-                  <a href="/media/{{.ID}}">
-                    <img src="/media/{{.ID}}" alt="Foto do registro de cultivo" loading="lazy"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
+                  <a href="{{$.MediaURL .ID}}">
+                    <img src="{{$.MediaURL .ID}}" alt="Foto do registro de cultivo" loading="lazy"{{if .Width}} width="{{.Width}}"{{end}}{{if .Height}} height="{{.Height}}"{{end}}>
                   </a>
                   {{if $.CanEdit}}
                     <form method="post" action="/diario/{{$.Cycle.ID}}/registros/{{$entryID}}/fotos/{{.ID}}/apagar">

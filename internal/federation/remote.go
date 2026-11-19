@@ -95,6 +95,9 @@ func fetchActorDocument(ctx context.Context, client *http.Client, actorURL strin
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return nil, fmt.Errorf("%w: status %d", ErrActorGone, resp.StatusCode)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("buscar Actor remoto: status %d", resp.StatusCode)
 	}

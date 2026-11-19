@@ -92,6 +92,36 @@ func (s *Service) FindCycle(ctx context.Context, viewerID, cycleID string) (*Cyc
 	return cycle, visible, nil
 }
 
+// FindCycleAsFollower busca um ciclo e os registros visíveis a um seguidor.
+//
+// Deve ser usado apenas depois de validar um token de capacidade da página do
+// ciclo. O seguidor enxerga registros públicos e restritos a seguidores, mas
+// nunca registros privados. Não há vínculo local: o token é a própria
+// autorização.
+func (s *Service) FindCycleAsFollower(ctx context.Context, cycleID string) (*Cycle, []Entry, error) {
+	cycle, err := s.store.FindCycle(ctx, cycleID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if cycle.Visibility == VisibilityPrivate {
+		return nil, nil, ErrNotFound
+	}
+
+	entries, err := s.store.ListEntries(ctx, cycleID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	visible := make([]Entry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.EffectiveVisibility(cycle) != VisibilityPrivate {
+			visible = append(visible, entry)
+		}
+	}
+
+	return cycle, visible, nil
+}
+
 // viewerFor descreve quem consulta o conteúdo de uma pessoa.
 func (s *Service) viewerFor(ctx context.Context, viewerID, ownerID string) (Viewer, error) {
 	viewer := Viewer{PersonID: viewerID}

@@ -30,6 +30,10 @@ var (
 	ErrMissingSignature = errors.New("assinatura HTTP ausente")
 	ErrInvalidSignature = errors.New("assinatura HTTP inválida")
 	ErrInvalidActivity  = errors.New("atividade federada inválida")
+	// ErrActorGone indica que o Actor remoto não existe mais (404 ou 410).
+	// Atividades assinadas por ele não podem ser verificadas e devem ser
+	// descartadas, sem provocar novas tentativas da instância de origem.
+	ErrActorGone = errors.New("Actor remoto não existe mais")
 )
 
 // SignatureParams contém os campos do cabeçalho Signature.

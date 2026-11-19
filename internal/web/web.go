@@ -64,6 +64,7 @@ type CultivationService interface {
 	CreateCycle(ctx context.Context, personID string, input cultivation.CycleInput) (*cultivation.Cycle, error)
 	UpdateCycle(ctx context.Context, personID, cycleID string, input cultivation.CycleUpdateInput) (*cultivation.Cycle, error)
 	FindCycle(ctx context.Context, viewerID, cycleID string) (*cultivation.Cycle, []cultivation.Entry, error)
+	FindCycleAsFollower(ctx context.Context, cycleID string) (*cultivation.Cycle, []cultivation.Entry, error)
 	ListPersonCycles(ctx context.Context, personID string) ([]cultivation.Cycle, error)
 	ListVisibleCycles(ctx context.Context, viewerID, personID string) ([]cultivation.Cycle, error)
 	ListPublicCycles(ctx context.Context, filter cultivation.CycleFilter) ([]cultivation.Cycle, error)
@@ -174,6 +175,7 @@ type pageData struct {
 	Cycle          *cultivation.Cycle
 	Entries        []cultivation.Entry
 	EntryMedia     map[string][]media.Asset
+	MediaURLs      map[string]string
 	Interactions   map[string]federation.EntryInteractions
 	CycleFilter    cultivation.CycleFilter
 	FormCycle      cultivation.Cycle
@@ -200,6 +202,17 @@ type pageData struct {
 	CanEdit    bool
 	IsNew      bool
 	FormAction string
+}
+
+// MediaURL devolve o endereço de uma imagem da página.
+//
+// Em páginas abertas por token de capacidade, o endereço inclui o token da
+// imagem; nas demais, aponta para o caminho público protegido pela sessão.
+func (d pageData) MediaURL(id string) string {
+	if target, ok := d.MediaURLs[id]; ok && target != "" {
+		return target
+	}
+	return "/media/" + url.PathEscape(id)
 }
 
 var pageFiles = []string{

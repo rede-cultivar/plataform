@@ -179,6 +179,13 @@ guardou o link continua com acesso enquanto o registro estiver federado. Ao
 deixar de seguir, a pessoa deixa de receber novas publicações, mas mantém o que
 já tinha recebido.
 
+O link **Ver registro completo** do cartão federado aponta para a página do
+ciclo com um `token` derivado do identificador do ciclo. A página aberta por
+esse token equivale à visão de seguidor: mostra registros públicos e `followers`,
+nunca privados, e inclui o token nas URLs das fotos. Ela é somente leitura;
+editar, responder e remover continuam exigindo uma conta com permissão. Sem
+token, com token inválido ou com token de outro ciclo, a página responde `404`.
+
 Quando a visibilidade efetiva muda entre `public` e `followers`, o objeto
 federado muda de identificador: a versão anterior recebe `Delete` e a nova é
 publicada como `Create`. Isso evita reutilizar um identificador já removido e
@@ -196,7 +203,7 @@ conhecimento reproduzível, como adubos caseiros e construção de recipientes.
 | `GET /diario/meu` | Ciclos da pessoa autenticada, incluindo privados |
 | `GET /diario/novo` | Formulário de criação de ciclo |
 | `POST /diario` | Cria um ciclo privado por padrão |
-| `GET /diario/{id}` | Ciclo e registros visíveis |
+| `GET /diario/{id}` | Ciclo e registros visíveis (token de capacidade para seguidores) |
 | `GET /diario/{id}/editar` | Edição do ciclo pela pessoa responsável |
 | `POST /diario/{id}/editar` | Atualiza contexto, situação e resultado |
 | `GET /diario/{id}/registros/novo` | Formulário de novo registro |
@@ -432,7 +439,10 @@ Fluxo implementado:
   `HTTP Signature`.
 - **Recebimento:** `POST /actors/{id}/inbox` valida a assinatura, o `Digest` e a
   data; `Follow` gera `Accept`, `Undo` remove o seguidor e as demais atividades
-  são persistidas para garantir idempotência.
+  são persistidas para garantir idempotência. Quando o documento do Actor remoto
+  responde `404` ou `410`, a atividade é descartada e o inbox responde `202`, em
+  vez de `500`: o Actor não existe mais e a instância de origem não deve
+  retentar.
 - **Interações:** respostas (`Create` de uma `Note` com `inReplyTo`), curtidas
   (`Like`), impulsos (`Announce`), edições de resposta (`Update`) e remoções
   (`Delete`/`Undo`) são vinculados ao registro quando a Note citada pertence a
@@ -442,7 +452,9 @@ Fluxo implementado:
   caracteres. Cada ator tem no máximo uma curtida e um impulso por registro;
   novas atividades do mesmo tipo atualizam a existente. As interações aparecem
   na página do ciclo, junto ao registro, com contadores e respostas. `Delete` de
-  uma conta remove também suas interações.
+  uma conta remove também suas interações. O Mastodon não oferece o botão de
+  impulso em publicações `followers`; o `Announce` continua aceito pelo
+  protocolo, mas não pode ser disparado por essa interface.
 - **Respostas enviadas:** o dono do ciclo pode responder a uma mensagem recebida
   na própria página do registro. A resposta é uma `Note` em `/respostas/{id}`,
   com `inReplyTo` apontando para a mensagem original, menção ao autor e entrega

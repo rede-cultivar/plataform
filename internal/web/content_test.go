@@ -14,6 +14,7 @@ import (
 
 	"github.com/rede-cultivar/plataform/internal/cultivation"
 	"github.com/rede-cultivar/plataform/internal/federation"
+	"github.com/rede-cultivar/plataform/internal/media"
 	"github.com/rede-cultivar/plataform/internal/platform/config"
 	"github.com/rede-cultivar/plataform/internal/practices"
 )
@@ -126,6 +127,21 @@ func (f *fakeCultivation) FindCycle(_ context.Context, viewerID, cycleID string)
 	return cycle, visible, nil
 }
 
+func (f *fakeCultivation) FindCycleAsFollower(_ context.Context, cycleID string) (*cultivation.Cycle, []cultivation.Entry, error) {
+	cycle, ok := f.cycles[cycleID]
+	if !ok || cycle.Visibility == cultivation.VisibilityPrivate {
+		return nil, nil, cultivation.ErrNotFound
+	}
+
+	visible := make([]cultivation.Entry, 0, len(f.entries[cycleID]))
+	for _, entry := range f.entries[cycleID] {
+		if entry.EffectiveVisibility(cycle) != cultivation.VisibilityPrivate {
+			visible = append(visible, entry)
+		}
+	}
+	return cycle, visible, nil
+}
+
 func (f *fakeCultivation) FindEntry(_ context.Context, entryID string) (*cultivation.Entry, error) {
 	for _, entries := range f.entries {
 		for _, entry := range entries {
@@ -137,7 +153,6 @@ func (f *fakeCultivation) FindEntry(_ context.Context, entryID string) (*cultiva
 	}
 	return nil, cultivation.ErrNotFound
 }
-
 func (f *fakeCultivation) ListPersonCycles(_ context.Context, personID string) ([]cultivation.Cycle, error) {
 	result := make([]cultivation.Cycle, 0)
 	for _, cycle := range f.cycles {
@@ -677,6 +692,98 @@ func TestPrivateCycleHiddenFromAnonymousVisitors(t *testing.T) {
 	}
 	if body := owner.Body.String(); !strings.Contains(body, "Registro privado") {
 		t.Error("owner cannot see the private entry")
+	}
+}
+
+func TestCyclePageTokenRevealsFollowerEntries(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["followers"] = sampleCycle("followers", cultivation.VisibilityFollowers)
+	cultivationService.entries["followers"] = []cultivation.Entry{
+		{
+			ID:         "entry-1",
+			CycleID:    "followers",
+			AuthorID:   "person-1",
+			OccurredAt: time.Now(),
+			Body:       "Registro para seguidores",
+			Visibility: cultivation.EntryVisibilityInherit,
+		},
+		{
+			ID:         "entry-2",
+			CycleID:    "followers",
+			AuthorID:   "person-1",
+			OccurredAt: time.Now(),
+			Body:       "Registro privado no ciclo",
+			Visibility: cultivation.EntryVisibilityPrivate,
+		},
+	}
+
+	mediaService := newFakeMedia()
+	mediaService.assets["asset-1"] = &media.Asset{ID: "asset-1", ContentType: "image/png", Width: 10, Height: 10}
+	mediaService.attachments["entry-1"] = []string{"asset-1"}
+
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice(), mediaService)
+
+	urls := federation.NewURLsWithSecret("http://localhost:8080", "segredo-de-teste")
+	token := urls.CycleToken("followers")
+	if token == "" {
+		t.Fatal("CycleToken() is empty")
+	}
+
+	response := getPage(router, "/diario/followers?token="+url.QueryEscape(token))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+
+	body := response.Body.String()
+	if !strings.Contains(body, "Registro para seguidores") {
+		t.Error("tokenized page does not show the followers entry")
+	}
+	if strings.Contains(body, "Registro privado no ciclo") {
+		t.Error("tokenized page shows a private entry")
+	}
+
+	wantMedia := urls.MediaWithToken("asset-1")
+	if !strings.Contains(body, wantMedia) {
+		t.Errorf("body does not contain tokenized media URL %q", wantMedia)
+	}
+	if strings.Contains(body, `src="/media/asset-1"`) {
+		t.Error("body contains the untokenized media URL")
+	}
+}
+
+func TestCyclePageTokenRejectsMissingOrInvalidToken(t *testing.T) {
+	identityService := newFakeIdentity()
+	cultivationService := newFakeCultivation()
+	cultivationService.cycles["followers"] = sampleCycle("followers", cultivation.VisibilityFollowers)
+	cultivationService.cycles["private"] = sampleCycle("private", cultivation.VisibilityPrivate)
+
+	router := newContentTestRouter(t, identityService, cultivationService, newFakePractice())
+
+	urls := federation.NewURLsWithSecret("http://localhost:8080", "segredo-de-teste")
+	followersToken := urls.CycleToken("followers")
+	privateToken := urls.CycleToken("private")
+	if followersToken == "" || privateToken == "" {
+		t.Fatal("CycleToken() is empty")
+	}
+
+	cases := []struct {
+		name   string
+		target string
+	}{
+		{"sem token", "/diario/followers"},
+		{"token inválido", "/diario/followers?token=invalido"},
+		{"token de outro ciclo", "/diario/followers?token=" + url.QueryEscape(privateToken)},
+		{"ciclo privado com token válido", "/diario/private?token=" + url.QueryEscape(privateToken)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			response := getPage(router, tc.target)
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusNotFound, response.Body.String())
+			}
+		})
 	}
 }
 

@@ -433,6 +433,51 @@ func TestNewEntryNoteFollowersAudience(t *testing.T) {
 	}
 }
 
+func TestNewEntryNoteFollowersUsesTokenizedEntryLink(t *testing.T) {
+	urls := NewURLsWithSecret("https://cultivar.example", "segredo-de-teste")
+	cycle := testCycle()
+	cycle.Visibility = cultivation.VisibilityFollowers
+	entry := testEntry()
+
+	note := NewEntryNote(urls, testPerson(), cycle, entry, nil)
+
+	want := urls.EntryWithToken(cycle.ID, entry.ID)
+	if note.URL != want {
+		t.Errorf("URL = %q, want %q", note.URL, want)
+	}
+	if !strings.Contains(note.URL, "?token="+urls.CycleToken(cycle.ID)) {
+		t.Errorf("URL = %q, want cycle capability token", note.URL)
+	}
+	if !strings.Contains(note.Content, `href="`+want+`"`) {
+		t.Errorf("Content = %q, want tokenized entry link", note.Content)
+	}
+	if strings.Contains(note.Content, `href="`+urls.Entry(cycle.ID, entry.ID)+`"`) {
+		t.Errorf("Content = %q, want no public entry link", note.Content)
+	}
+}
+
+func TestNewReplyNoteFollowersUsesTokenizedEntryLink(t *testing.T) {
+	urls := NewURLsWithSecret("https://cultivar.example", "segredo-de-teste")
+	cycle := testCycle()
+	cycle.Visibility = cultivation.VisibilityFollowers
+	entry := testEntry()
+	target := ReplyTarget{
+		ActorID:     "https://remote.example/users/bob",
+		ActorHandle: "bob",
+		ObjectID:    "https://remote.example/notes/1",
+	}
+
+	note := NewReplyNote(urls, testPerson(), entry, "reply-1", target, "Obrigada!", cultivation.VisibilityFollowers, time.Now())
+
+	want := urls.EntryWithToken(entry.CycleID, entry.ID)
+	if note.URL != want {
+		t.Errorf("URL = %q, want %q", note.URL, want)
+	}
+	if !strings.Contains(note.URL, "?token="+urls.CycleToken(entry.CycleID)) {
+		t.Errorf("URL = %q, want cycle capability token", note.URL)
+	}
+}
+
 func TestNewEntryNotePrivateAudience(t *testing.T) {
 	urls := NewURLs("https://cultivar.example")
 	cycle := testCycle()

@@ -125,6 +125,29 @@ func (u URLs) Entry(cycleID, entryID string) string {
 	return u.base + "/diario/" + url.PathEscape(cycleID) + "#registro-" + url.PathEscape(entryID)
 }
 
+// EntryWithToken retorna a página de um registro restrito a seguidores.
+//
+// O token libera a leitura da página do ciclo, inclusive dos registros com
+// visibilidade "followers", sem exigir sessão ou vínculo local. A página
+// continua somente leitura: edição e respostas dependem de uma conta.
+func (u URLs) EntryWithToken(cycleID, entryID string) string {
+	page := u.base + "/diario/" + url.PathEscape(cycleID)
+	if token := u.capabilityToken("cycle", cycleID); token != "" {
+		page += "?token=" + url.QueryEscape(token)
+	}
+	return page + "#registro-" + url.PathEscape(entryID)
+}
+
+// CycleToken devolve o token de capacidade da página de um ciclo.
+func (u URLs) CycleToken(id string) string {
+	return u.capabilityToken("cycle", id)
+}
+
+// ValidCycleToken informa se o token apresentado libera a página do ciclo.
+func (u URLs) ValidCycleToken(id, token string) bool {
+	return validCapability(u.capabilityToken("cycle", id), token)
+}
+
 // Activity retorna a URL canônica de uma atividade federada.
 func (u URLs) Activity(id string) string {
 	return u.base + "/activities/" + url.PathEscape(id)

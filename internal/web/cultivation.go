@@ -162,7 +162,19 @@ func (s *server) cycleShow(w http.ResponseWriter, r *http.Request) {
 		viewerID = account.Person.ID
 	}
 
-	cycle, entries, err := s.cultivation.FindCycle(r.Context(), viewerID, chi.URLParam(r, "id"))
+	cycleID := chi.URLParam(r, "id")
+	urls := s.federationURLs()
+	tokenView := urls.ValidCycleToken(cycleID, r.URL.Query().Get("token"))
+
+	cycle, entries, err := s.cultivation.FindCycle(r.Context(), viewerID, cycleID)
+	if err == nil && cycle.IsOwner(viewerID) {
+		// A pessoa responsável vê o ciclo completo, sem depender de token.
+		tokenView = false
+	} else if tokenView {
+		// O token de capacidade equivale a um seguidor: libera registros
+		// públicos e restritos, mas nunca privados.
+		cycle, entries, err = s.cultivation.FindCycleAsFollower(r.Context(), cycleID)
+	}
 	if errors.Is(err, cultivation.ErrNotFound) {
 		http.Error(w, "página não encontrada", http.StatusNotFound)
 		return
@@ -190,6 +202,14 @@ func (s *server) cycleShow(w http.ResponseWriter, r *http.Request) {
 			s.logger.Warn("list entry media", "error", err)
 		} else {
 			data.EntryMedia = assets
+			if tokenView {
+				data.MediaURLs = make(map[string]string)
+				for _, list := range assets {
+					for _, asset := range list {
+						data.MediaURLs[asset.ID] = urls.MediaWithToken(asset.ID)
+					}
+				}
+			}
 		}
 	}
 

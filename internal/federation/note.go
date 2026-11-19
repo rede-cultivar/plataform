@@ -121,14 +121,19 @@ func newEntryNote(
 		published = entry.OccurredAt
 	}
 
+	entryURL := urls.Entry(cycle.ID, entry.ID)
+	if visibility == cultivation.VisibilityFollowers {
+		entryURL = urls.EntryWithToken(cycle.ID, entry.ID)
+	}
+
 	note := Note{
 		Context:      []string{activityStreamsContext},
 		ID:           entryNoteID(urls, entry.ID, visibility),
 		Type:         "Note",
 		AttributedTo: urls.Actor(person.ID),
-		Content:      entryContent(urls, cycle, entry),
+		Content:      entryContent(urls, cycle, entry, entryURL),
 		Published:    published.UTC().Format(time.RFC3339),
-		URL:          urls.Entry(cycle.ID, entry.ID),
+		URL:          entryURL,
 	}
 	applyAudience(&note, urls, person, visibility, nil)
 
@@ -212,6 +217,11 @@ func NewReplyNote(
 ) Note {
 	name := mentionName(target.ActorID, target.ActorHandle)
 
+	entryURL := urls.Entry(entry.CycleID, entry.ID)
+	if visibility == cultivation.VisibilityFollowers {
+		entryURL = urls.EntryWithToken(entry.CycleID, entry.ID)
+	}
+
 	note := Note{
 		Context:      []string{activityStreamsContext},
 		ID:           urls.ReplyNote(replyID),
@@ -220,7 +230,7 @@ func NewReplyNote(
 		Content:      replyContent(name, target, content),
 		Published:    published.UTC().Format(time.RFC3339),
 		InReplyTo:    target.ObjectID,
-		URL:          urls.Entry(entry.CycleID, entry.ID),
+		URL:          entryURL,
 	}
 
 	extraCC := make([]string, 0, 1)
@@ -313,7 +323,7 @@ func NewDelete(urls URLs, person identity.Person, note Note, activityID string) 
 	}
 }
 
-func entryContent(urls URLs, cycle cultivation.Cycle, entry cultivation.Entry) string {
+func entryContent(urls URLs, cycle cultivation.Cycle, entry cultivation.Entry, entryURL string) string {
 	parts := make([]string, 0, 8)
 
 	title := strings.TrimSpace(cycle.Name)
@@ -398,7 +408,7 @@ func entryContent(urls URLs, cycle cultivation.Cycle, entry cultivation.Entry) s
 	}
 
 	parts = append(parts,
-		`<p><a href="`+html.EscapeString(urls.Entry(cycle.ID, entry.ID))+`">Ver registro completo</a></p>`,
+		`<p><a href="`+html.EscapeString(entryURL)+`">Ver registro completo</a></p>`,
 	)
 
 	return strings.Join(parts, "")

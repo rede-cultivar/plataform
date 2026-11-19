@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -256,6 +258,77 @@ func TestFetchActorRejectsIncompleteDocument(t *testing.T) {
 	_, err := NewVerifier(server.Client()).FetchActor(context.Background(), server.URL+"/users/bob")
 	if !errors.Is(err, ErrInvalidActivity) {
 		t.Fatalf("FetchActor() error = %v, want ErrInvalidActivity", err)
+	}
+}
+
+func TestFetchActorReportsGone(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusGone} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+			}))
+			t.Cleanup(server.Close)
+
+			_, err := NewVerifier(server.Client()).FetchActor(context.Background(), server.URL+"/users/bob")
+			if !errors.Is(err, ErrActorGone) {
+				t.Fatalf("FetchActor() error = %v, want ErrActorGone", err)
+			}
+		})
+	}
+}
+
+// newInboxTestService cria um serviço mínimo para testar apenas o descarte de
+// atividades antes do acesso ao armazenamento.
+func newInboxTestService(client *http.Client) *Service {
+	return &Service{
+		verifier: NewVerifier(client),
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
+func TestHandleInboxDiscardsGoneActor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusGone)
+	}))
+	t.Cleanup(server.Close)
+
+	keys, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair() error = %v", err)
+	}
+
+	actorID := server.URL + "/users/bob"
+	body := []byte(`{"id":"` + server.URL + `/activities/1","type":"Follow","actor":"` + actorID + `"}`)
+	req := signedRequest(t, "https://cultivar.example/actors/ana/inbox", body, actorID+"#main-key", keys)
+
+	service := newInboxTestService(server.Client())
+	if err := service.HandleInbox(context.Background(), "person-1", req); err != nil {
+		t.Fatalf("HandleInbox() error = %v, want nil for gone actor", err)
+	}
+}
+
+func TestHandleInboxKeepsOtherActorErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+
+	keys, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair() error = %v", err)
+	}
+
+	actorID := server.URL + "/users/bob"
+	body := []byte(`{"id":"` + server.URL + `/activities/1","type":"Follow","actor":"` + actorID + `"}`)
+	req := signedRequest(t, "https://cultivar.example/actors/ana/inbox", body, actorID+"#main-key", keys)
+
+	service := newInboxTestService(server.Client())
+	err = service.HandleInbox(context.Background(), "person-1", req)
+	if err == nil {
+		t.Fatal("HandleInbox() error = nil, want failure for unavailable actor")
+	}
+	if errors.Is(err, ErrActorGone) {
+		t.Errorf("HandleInbox() error = %v, want no ErrActorGone", err)
 	}
 }
 

@@ -547,6 +547,13 @@ func (s *Service) HandleInbox(ctx context.Context, personID string, req *http.Re
 
 	remote, err := s.verifier.VerifyRequest(ctx, req, body)
 	if err != nil {
+		// Um Actor removido não pode mais assinar atividades válidas. A
+		// atividade é descartada e a resposta 202 evita retentativas da
+		// instância de origem.
+		if errors.Is(err, ErrActorGone) {
+			s.logger.Info("discard inbox activity from gone actor", "error", err)
+			return nil
+		}
 		return err
 	}
 
